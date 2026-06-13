@@ -705,6 +705,12 @@ export class WiredStream extends StreamActiveRecord<Streams.WiredStream.Definiti
       return allowlistValidation;
     }
 
+    // Draft streams are routed to `DraftStream` by `streamFromDefinition`, and its action
+    // determination only writes the `.streams` document and an ES|QL view — it never PUTs a
+    // processing ingest pipeline (see `DraftStream.doDetermineCreate/UpdateActions`). With no
+    // pipeline to fail at ingest, we skip the expensive pipeline simulation, the settings dry-run,
+    // and the sensitive_data Painless-regex guard embedded in `validateSimulation` for drafts.
+    // These all run when the draft is materialized into a real (non-draft) WiredStream.
     if (!isDraftStream(this._definition)) {
       const shouldValidateSettingsWithDryRun =
         existsInStartingState && ancestorsAndSelf.some((ancestor) => ancestor.hasChangedSettings());

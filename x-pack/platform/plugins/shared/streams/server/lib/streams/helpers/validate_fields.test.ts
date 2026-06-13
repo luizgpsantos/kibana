@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import type { ElasticsearchClient } from '@kbn/core/server';
 import type { FieldDefinition, Streams } from '@kbn/streams-schema';
 import { namespacePrefixes } from '@kbn/streams-schema';
 import {
@@ -12,8 +13,19 @@ import {
   validateDescendantFields,
   validateSystemFields,
   validateClassicFields,
+  validateSimulation,
 } from './validate_fields';
 import { MalformedFieldsError } from '../errors/malformed_fields_error';
+import { PAINLESS_REGEX_DISABLED_MESSAGE } from '../ingest_pipelines/painless_regex_guard';
+import { executePipelineSimulation } from '../../../routes/internal/streams/processing/simulation_handler';
+
+jest.mock('../../../routes/internal/streams/processing/simulation_handler', () => ({
+  executePipelineSimulation: jest.fn(),
+}));
+
+const executePipelineSimulationMock = executePipelineSimulation as jest.MockedFunction<
+  typeof executePipelineSimulation
+>;
 
 const createWiredStreamDefinition = (
   name: string,
@@ -745,5 +757,118 @@ describe('validateClassicFields', () => {
     const definition = createClassicStreamDefinition('metrics-custom');
 
     expect(() => validateClassicFields(definition)).not.toThrow();
+  });
+});
+
+describe('validateSimulation (save-path Painless regex guard)', () => {
+  const createDefinitionWithSteps = (
+    steps: Streams.WiredStream.Definition['ingest']['processing']['steps']
+  ): Streams.WiredStream.Definition => {
+    const definition = createWiredStreamDefinition('logs.otel', {});
+    definition.ingest.processing.steps = steps;
+    return definition;
+  };
+
+  const mockEsClient = (
+    painlessRegexEnabled?: string
+  ): { esClient: ElasticsearchClient; getSettings: jest.Mock } => {
+    const getSettings = jest.fn().mockResolvedValue({
+      transient: {},
+      persistent:
+        painlessRegexEnabled === undefined
+          ? {}
+          : { 'script.painless.regex.enabled': painlessRegexEnabled },
+      defaults: {},
+    });
+    return {
+      esClient: { cluster: { getSettings } } as unknown as ElasticsearchClient,
+      getSettings,
+    };
+  };
+
+  beforeEach(() => {
+    executePipelineSimulationMock.mockReset();
+    executePipelineSimulationMock.mockResolvedValue({
+      status: 'success',
+    } as Awaited<ReturnType<typeof executePipelineSimulation>>);
+  });
+
+  it('rejects a checksum detector with the typed error when Painless regex is disabled, without writing the pipeline', async () => {
+    const { esClient } = mockEsClient('false');
+    const definition = createDefinitionWithSteps([
+      {
+        action: 'sensitive_data',
+        from: 'body.text',
+        categories: [{ id: 'credit-card', action: 'redact' }],
+      },
+    ]);
+
+    await expect(validateSimulation(definition, esClient)).rejects.toThrow(MalformedFieldsError);
+    await expect(validateSimulation(definition, esClient)).rejects.toThrow(
+      PAINLESS_REGEX_DISABLED_MESSAGE
+    );
+    // The pipeline simulation (which is what persists/validates the real pipeline) never runs.
+    expect(executePipelineSimulationMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a checksum detector when the setting is "limited" (default) and reads cluster settings exactly once', async () => {
+    const { esClient, getSettings } = mockEsClient('limited');
+    const definition = createDefinitionWithSteps([
+      {
+        action: 'sensitive_data',
+        from: 'body.text',
+        categories: [{ id: 'iban', action: 'redact' }],
+      },
+    ]);
+
+    await expect(validateSimulation(definition, esClient)).resolves.toBeUndefined();
+    // The guard runs exactly once per validate: a single cluster.getSettings read, no double call.
+    expect(getSettings).toHaveBeenCalledTimes(1);
+    expect(executePipelineSimulationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a checksum detector when the setting is absent (default)', async () => {
+    const { esClient } = mockEsClient();
+    const definition = createDefinitionWithSteps([
+      {
+        action: 'sensitive_data',
+        from: 'body.text',
+        categories: [{ id: 'credit-card', action: 'redact' }],
+      },
+    ]);
+
+    await expect(validateSimulation(definition, esClient)).resolves.toBeUndefined();
+    expect(executePipelineSimulationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves structural-only detectors regardless of the setting and never reads cluster settings', async () => {
+    const { esClient, getSettings } = mockEsClient('false');
+    const definition = createDefinitionWithSteps([
+      {
+        action: 'sensitive_data',
+        from: 'body.text',
+        categories: [{ id: 'email', action: 'redact' }],
+      },
+    ]);
+
+    await expect(validateSimulation(definition, esClient)).resolves.toBeUndefined();
+    expect(getSettings).not.toHaveBeenCalled();
+    expect(executePipelineSimulationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves a checksum detector in structural_only mode regardless of the setting (no regex script)', async () => {
+    const { esClient, getSettings } = mockEsClient('false');
+    const definition = createDefinitionWithSteps([
+      {
+        action: 'sensitive_data',
+        from: 'body.text',
+        categories: [{ id: 'credit-card', action: 'redact' }],
+        structural_only: true,
+      },
+    ]);
+
+    await expect(validateSimulation(definition, esClient)).resolves.toBeUndefined();
+    expect(getSettings).not.toHaveBeenCalled();
+    expect(executePipelineSimulationMock).toHaveBeenCalledTimes(1);
   });
 });

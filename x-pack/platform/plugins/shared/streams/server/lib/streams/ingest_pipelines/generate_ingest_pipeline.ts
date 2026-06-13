@@ -27,6 +27,7 @@ import {
   getLogsEcsPipelineProcessors,
 } from './logs_default_pipeline';
 import { getProcessingPipelineName } from './name';
+import { getSensitiveDataFlagNamespace } from './sensitive_data_flag_namespace';
 
 export async function generateIngestPipeline(
   name: string,
@@ -84,7 +85,7 @@ export async function generateIngestPipeline(
         ? (
             await transpileIngestPipeline(
               definition.ingest.processing,
-              undefined,
+              { sensitiveDataFlagNamespace: getSensitiveDataFlagNamespace(definition) },
               createStreamlangResolverOptions(esClient)
             )
           ).processors
@@ -116,7 +117,7 @@ export async function generateClassicIngestPipelineBody(
 ): Promise<Partial<IngestPutPipelineRequest>> {
   const transpiledIngestPipeline = await transpileIngestPipeline(
     definition.ingest.processing,
-    undefined,
+    { sensitiveDataFlagNamespace: getSensitiveDataFlagNamespace(definition) },
     createStreamlangResolverOptions(esClient)
   );
   return {

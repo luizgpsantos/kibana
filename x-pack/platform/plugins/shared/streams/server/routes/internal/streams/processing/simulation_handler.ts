@@ -58,7 +58,12 @@ import { resolveFirstNonDraftAncestor } from '../../../../lib/streams/helpers/dr
 import { getProcessingPipelineName } from '../../../../lib/streams/ingest_pipelines/name';
 import type { StreamsClient } from '../../../../lib/streams/client';
 import { createStreamlangResolverOptions } from '../../../../lib/streams/resolvers';
-import { buildSimulationProcessorsWithConditionNoops } from './simulation_condition_noops';
+import {
+  buildSimulationProcessorsWithConditionNoops,
+  type SimulationTranspilationOverrides,
+} from './simulation_condition_noops';
+import { getSensitiveDataFlagNamespace } from '../../../../lib/streams/ingest_pipelines/sensitive_data_flag_namespace';
+import { checkSensitiveDataPainlessRegex } from '../../../../lib/streams/ingest_pipelines/painless_regex_guard';
 
 export interface ProcessingSimulationParams {
   path: {
@@ -166,6 +171,31 @@ export const simulateProcessing = async ({
     };
   }
 
+  // Block sensitive_data checksum redaction up front when the cluster has Painless regex disabled,
+  // since those confirmers would otherwise fail at ingest with a cryptic error.
+  const painlessRegexError = await checkSensitiveDataPainlessRegex(
+    params.body.processing,
+    esClient
+  );
+  if (painlessRegexError) {
+    return {
+      documents: [],
+      processors_metrics: {},
+      documents_metrics: {
+        failed_rate: 1,
+        partially_parsed_rate: 0,
+        skipped_rate: 0,
+        parsed_rate: 0,
+        dropped_rate: 0,
+      },
+      detected_fields: [],
+      definition_error: {
+        type: 'validation_error',
+        message: painlessRegexError,
+      },
+    };
+  }
+
   const streamlangResolverOptions: StreamlangResolverOptions =
     createStreamlangResolverOptions(esClient);
 
@@ -240,7 +270,8 @@ const prepareSimulationDocs = (
 
 const prepareSimulationProcessors = async (
   processing: StreamlangDSL,
-  resolverOptions?: StreamlangResolverOptions
+  resolverOptions?: StreamlangResolverOptions,
+  transpilationOverrides?: SimulationTranspilationOverrides
 ): Promise<IngestProcessorContainer[]> => {
   //
   /**
@@ -250,7 +281,8 @@ const prepareSimulationProcessors = async (
    */
   const transpiledIngestPipelineProcessors = await buildSimulationProcessorsWithConditionNoops(
     processing,
-    resolverOptions
+    resolverOptions,
+    transpilationOverrides
   );
 
   return transpiledIngestPipelineProcessors.map((processor) => {
@@ -307,7 +339,9 @@ const prepareSimulationData = async (
 
   return {
     docs: prepareSimulationDocs(documents, targetStreamName, geoPointFields),
-    processors: await prepareSimulationProcessors(processing, resolverOptions),
+    processors: await prepareSimulationProcessors(processing, resolverOptions, {
+      sensitiveDataFlagNamespace: getSensitiveDataFlagNamespace(stream),
+    }),
   };
 };
 

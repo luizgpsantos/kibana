@@ -16,6 +16,12 @@ import {
 } from '@kbn/streamlang';
 import type { StreamlangResolverOptions } from '@kbn/streamlang/types/resolvers';
 
+/** Extra transpilation options threaded into the simulate-only pipeline (e.g. the OTel-aware
+ * sensitive_data flag namespace, so the live preview matches the saved pipeline). */
+export interface SimulationTranspilationOverrides {
+  sensitiveDataFlagNamespace?: string;
+}
+
 type StreamlangStep = StreamlangDSL['steps'][number];
 
 function createConditionNoopProcessor({
@@ -67,10 +73,12 @@ async function buildSimulationProcessorsFromSteps({
   steps,
   parentCondition,
   resolverOptions,
+  transpilationOverrides,
 }: {
   steps: StreamlangStep[];
   parentCondition?: Condition;
   resolverOptions?: StreamlangResolverOptions;
+  transpilationOverrides?: SimulationTranspilationOverrides;
 }): Promise<NonNullable<IngestProcessorContainer>[]> {
   const processors: NonNullable<IngestProcessorContainer>[] = [];
 
@@ -95,6 +103,7 @@ async function buildSimulationProcessorsFromSteps({
           steps: nestedSteps,
           parentCondition: combinedCondition,
           resolverOptions,
+          transpilationOverrides,
         }))
       );
 
@@ -117,6 +126,7 @@ async function buildSimulationProcessorsFromSteps({
             steps: elseSteps,
             parentCondition: negatedCondition,
             resolverOptions,
+            transpilationOverrides,
           }))
         );
       }
@@ -144,6 +154,7 @@ async function buildSimulationProcessorsFromSteps({
         {
           ignoreMalformed: true,
           traceCustomIdentifiers: true,
+          sensitiveDataFlagNamespace: transpilationOverrides?.sensitiveDataFlagNamespace,
         },
         resolverOptions
       )
@@ -170,10 +181,12 @@ async function buildSimulationProcessorsFromSteps({
  */
 export async function buildSimulationProcessorsWithConditionNoops(
   processing: StreamlangDSL,
-  resolverOptions?: StreamlangResolverOptions
+  resolverOptions?: StreamlangResolverOptions,
+  transpilationOverrides?: SimulationTranspilationOverrides
 ): Promise<NonNullable<IngestProcessorContainer>[]> {
   return await buildSimulationProcessorsFromSteps({
     steps: processing.steps,
     resolverOptions,
+    transpilationOverrides,
   });
 }

@@ -20,6 +20,7 @@ import { createStreamlangResolverOptions } from '../resolvers';
 import { executePipelineSimulation } from '../../../routes/internal/streams/processing/simulation_handler';
 import { baseMappings } from '../component_templates/logs_layer';
 import { MalformedFieldsError } from '../errors/malformed_fields_error';
+import { checkSensitiveDataPainlessRegex } from '../ingest_pipelines/painless_regex_guard';
 
 export function validateAncestorFields({
   ancestors,
@@ -111,6 +112,18 @@ export async function validateSimulation(
 ) {
   if (definition.ingest.processing.steps.length === 0) {
     return;
+  }
+
+  // Block sensitive_data checksum redaction (Painless regex confirmers) before persisting when the
+  // cluster has Painless regex disabled, so the save fails with a clear, user-facing message instead
+  // of the cryptic compile error the pipeline simulation below would otherwise surface. Shares the
+  // same guard as the simulate (preview) path so both report the same thing.
+  const painlessRegexError = await checkSensitiveDataPainlessRegex(
+    definition.ingest.processing,
+    esClient
+  );
+  if (painlessRegexError) {
+    throw new MalformedFieldsError(painlessRegexError);
   }
 
   const simulationBody: IngestSimulateRequest = {
