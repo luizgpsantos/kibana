@@ -30,5 +30,5 @@ export const creditCardDetector = {
   },
   recommendedAction: 'remove',
   defaultPrecisionGuards: ['Redact credit card numbers'],
-  anticipatoryAffinity: ['cvv', 'cardholder-name', 'billing-address', 'iban'],
+  anticipatoryAffinity: ['iban'],
 };

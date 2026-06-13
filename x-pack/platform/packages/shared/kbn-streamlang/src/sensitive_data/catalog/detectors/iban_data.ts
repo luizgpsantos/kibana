@@ -30,5 +30,5 @@ export const ibanDetector = {
   },
   recommendedAction: 'remove',
   defaultPrecisionGuards: ['Redact IBANs (bank account numbers)'],
-  anticipatoryAffinity: ['credit-card', 'cardholder-name'],
+  anticipatoryAffinity: ['credit-card'],
 };

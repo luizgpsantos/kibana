@@ -201,7 +201,7 @@ export const listRecommendedCategories = (foundIds: string[]): RecommendedCatego
   const recommendedIds = new Set<string>();
   for (const detector of getActiveDetectors()) {
     for (const affineId of detector.anticipatoryAffinity ?? []) {
-      if (!found.has(affineId) && activeSet.has(affineId)) {
+      if (!found.has(affineId) && activeSet.has(affineId) && DETECTORS[affineId]) {
         recommendedIds.add(affineId);
       }
     }

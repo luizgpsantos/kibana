@@ -9,6 +9,7 @@ import {
   ACTIVE_DETECTOR_IDS,
   CATALOG,
   DETECTORS,
+  createDefaultCategoryConfig,
   getActiveDetectors,
   getDetectorsByIds,
   getCategoryMaskToken,
@@ -16,7 +17,7 @@ import {
   listLibraryCategories,
   listRecommendedCategories,
 } from '.';
-import { isChecksum } from '../compile';
+import { compileFromCategories, isChecksum } from '../compile';
 
 describe('sensitive_data catalog (Plan 6 — confirmed active set)', () => {
   it('vendors the curated detector modules', () => {
@@ -120,9 +121,7 @@ describe('sensitive_data catalog — proposal surface', () => {
   it('exposes anticipatoryAffinity on active categories', () => {
     const [dob] = listCatalogCategories();
     expect(dob.id).toBe('date-of-birth');
-    expect(dob.anticipatoryAffinity).toEqual(
-      expect.arrayContaining(['us-ssn', 'email', 'passport-national-id'])
-    );
+    expect(dob.anticipatoryAffinity).toEqual(expect.arrayContaining(['us-ssn', 'email']));
   });
 
   it('derives Recommended from active affinity only, excluding already configured ids', () => {
@@ -130,7 +129,29 @@ describe('sensitive_data catalog — proposal surface', () => {
     const ids = recommended.map((c) => c.id);
     expect(ids).not.toContain('date-of-birth');
     expect(ids).toEqual(expect.arrayContaining(['us-ssn', 'email']));
-    expect(ids).not.toContain('passport-national-id');
     expect(ids.every((id) => ACTIVE_DETECTOR_IDS.includes(id))).toBe(true);
+  });
+
+  it('listRecommendedCategories never returns an id without a working detector', () => {
+    for (const foundIds of [
+      [],
+      ['date-of-birth'],
+      [...ACTIVE_DETECTOR_IDS],
+      ['email', 'credit-card'],
+    ]) {
+      for (const { id } of listRecommendedCategories(foundIds)) {
+        expect(DETECTORS[id]).toBeDefined();
+      }
+    }
+  });
+
+  it('returns no recommendations when all active detectors are configured', () => {
+    expect(listRecommendedCategories([...ACTIVE_DETECTOR_IDS])).toEqual([]);
+  });
+
+  it('compileFromCategories emits no warnings for all active detectors', () => {
+    const categories = ACTIVE_DETECTOR_IDS.map((id) => createDefaultCategoryConfig(id));
+    const { warnings } = compileFromCategories(categories, { field: 'message' });
+    expect(warnings).toEqual([]);
   });
 });

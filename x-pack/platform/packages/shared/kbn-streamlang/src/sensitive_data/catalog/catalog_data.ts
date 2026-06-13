@@ -45,18 +45,6 @@ export const catalogIndexData = {
       displayName: 'Date of birth',
       categories: ['PII'],
     },
-    {
-      id: 'passport-national-id',
-      file: 'detectors/passport-national-id.json',
-      displayName: 'Passport / national ID number',
-      categories: ['PII'],
-    },
-    {
-      id: 'national-id-ca-sin',
-      file: 'detectors/national-id-ca-sin.json',
-      displayName: 'Canadian Social Insurance Number',
-      categories: ['PII'],
-    },
   ],
   deferred: [],
   affinityVocabulary: [
@@ -65,18 +53,5 @@ export const catalogIndexData = {
     { slug: 'email', displayName: 'Email address', detector: 'email' },
     { slug: 'iban', displayName: 'IBAN (bank account number)', detector: 'iban' },
     { slug: 'date-of-birth', displayName: 'Date of birth', detector: 'date-of-birth' },
-    {
-      slug: 'passport-national-id',
-      displayName: 'Passport / national ID number',
-      detector: 'passport-national-id',
-    },
-    {
-      slug: 'national-id-ca-sin',
-      displayName: 'Canadian Social Insurance Number',
-      detector: 'national-id-ca-sin',
-    },
-    { slug: 'cvv', displayName: 'Card verification value (CVV)', detector: null },
-    { slug: 'cardholder-name', displayName: 'Cardholder name', detector: null },
-    { slug: 'billing-address', displayName: 'Billing address', detector: null },
   ],
 } as const;

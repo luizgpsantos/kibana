@@ -32,5 +32,5 @@ export const dateOfBirthDetector = {
     'Only treat a date as a birth date when labeled nearby',
     'Accept only conservative date formats',
   ],
-  anticipatoryAffinity: ['us-ssn', 'email', 'passport-national-id'],
+  anticipatoryAffinity: ['us-ssn', 'email'],
 };
