@@ -1,0 +1,34 @@
+{
+  "processors": [
+    {
+      "redact": {
+        "field": "message",
+        "patterns": [
+          "(?i)(?=[dbDB])(?:date of birth|d\\.?o\\.?b\\.?|birth ?date|\\bborn(?: on)?)[^0-9A-Za-z]{0,15}+\\K%{DOB:DOB}",
+          "%{EMAILADDRESS:EMAIL}",
+          "(?i)(?:ssns?|ss#|soc(?: |_)?sec(?:urity)?|social(?: |_)?security(?:(?: |_)?(?:number|no\\.?|#))?|tax(?: |_)?id(?:entification)?(?:(?: |_)?number)?)[^0-9]{0,20}\\K%{US_SSN:US_SSN}"
+        ],
+        "pattern_definitions": {
+          "DOB": "(?<![0-9])(?:[0-9]{4}(?:[-/.]|%2F)(?:0[1-9]|1[0-2])(?:[-/.]|%2F)(?:0[1-9]|[12][0-9]|3[01])|(?:0?[1-9]|1[0-2])(?:[-/.]|%2F)(?:0?[1-9]|[12][0-9]|3[01])(?:[-/.]|%2F)[0-9]{4}|[0-9]{4}(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])|(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])[0-9]{4}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s++[0-9]{1,2},?\\s++[0-9]{4})(?![0-9])",
+          "US_SSN": "(?<![0-9])(?!000|666|9[0-9]{2})[0-9]{3}[- ]?(?!00)[0-9]{2}[- ]?(?!0000)[0-9]{4}(?![0-9])"
+        },
+        "ignore_missing": true,
+        "description": "Redact sensitive data (combined, structural detectors)"
+      }
+    },
+    {
+      "script": {
+        "lang": "painless",
+        "description": "Redact confirmed Credit card number — per-candidate luhn checksum",
+        "source": "def value = $('message', null);\nif (!(value instanceof String)) { return; }\nString text = (String) value;\ndef m = /((?<![0-9])(?:[0-9][ .-]?){12,18}[0-9](?![0-9]))/.matcher(text);\nString out = ''; int last = 0; boolean any = false;\nwhile (m.find()) {\n  String cand = m.group(1); int gs = m.start(1); int ge = m.end(1);\n  int sum = 0; boolean alt = false; int cnt = 0; int first = -1; boolean multi = false; for (int i = cand.length() - 1; i >= 0; i--) { char c = cand.charAt(i); if (c < (char)'0' || c > (char)'9') { continue; } int raw = c - (char)'0'; if (first < 0) { first = raw; } else if (raw != first) { multi = true; } int d = raw; cnt++; if (alt) { d *= 2; if (d > 9) { d -= 9; } } sum += d; alt = !alt; } boolean ok = (cnt > 0 && multi && sum % 10 == 0);\n  out += text.substring(last, gs);\n  if (ok) { out += '<CREDIT_CARD>'; any = true; } else { out += text.substring(gs, ge); }\n  last = ge;\n}\nif (any) {\n  out += text.substring(last); ctx['message'] = out;\n}"
+      }
+    },
+    {
+      "script": {
+        "lang": "painless",
+        "description": "Redact confirmed IBAN (bank account number) — per-candidate mod97 checksum",
+        "source": "def value = $('message', null);\nif (!(value instanceof String)) { return; }\nString text = (String) value;\ndef m = /((?<![A-Za-z0-9])(?:[A-Za-z]{2}[0-9]{2}[A-Za-z0-9]{11,30}|[A-Za-z]{2}[0-9]{2}(?: [A-Za-z0-9]{4})+(?: [A-Za-z0-9]{1,3})?)(?![A-Za-z0-9]))/.matcher(text);\nString out = ''; int last = 0; boolean any = false;\nwhile (m.find()) {\n  String cand = m.group(1); int gs = m.start(1); int ge = m.end(1);\n  String s = ''; for (int i = 0; i < cand.length(); i++) { char c = cand.charAt(i); if (c == (char)' ') { continue; } if (c >= (char)'a' && c <= (char)'z') { c = (char)(c - 32); } s += c; } boolean ok; if (s.length() < 15 || s.length() > 34) { ok = false; } else { String rearr = s.substring(4) + s.substring(0, 4); long rem = 0; boolean good = true; for (int i = 0; i < rearr.length(); i++) { char c = rearr.charAt(i); int val; if (c >= (char)'0' && c <= (char)'9') { val = c - (char)'0'; rem = (rem * 10 + val) % 97; } else if (c >= (char)'A' && c <= (char)'Z') { val = c - (char)'A' + 10; rem = (rem * 100 + val) % 97; } else { good = false; break; } } ok = good && (rem == 1); }\n  out += text.substring(last, gs);\n  if (ok) { out += '<IBAN>'; any = true; } else { out += text.substring(gs, ge); }\n  last = ge;\n}\nif (any) {\n  out += text.substring(last); ctx['message'] = out;\n}"
+      }
+    }
+  ]
+}

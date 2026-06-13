@@ -577,6 +577,42 @@ export const ACTION_METADATA_MAP: Record<ProcessorType, ActionMetadata> = {
     ],
   },
 
+  sensitive_data: {
+    name: i18n.translate('xpack.streamlang.actionMetadata.sensitiveData.name', {
+      defaultMessage: 'Sensitive Data',
+    }),
+    description: i18n.translate('xpack.streamlang.actionMetadata.sensitiveData.description', {
+      defaultMessage:
+        'Detect and redact sensitive data (PII) using a curated catalog of categories such as credit cards, emails, and national IDs.',
+    }),
+    usage: i18n.translate('xpack.streamlang.actionMetadata.sensitiveData.usage', {
+      defaultMessage:
+        'Provide the source `from` field and select one or more `categories` from the sensitive-data catalog. Each category expands into verified redaction processors; no raw patterns are required.',
+    }),
+    examples: [
+      {
+        description: i18n.translate(
+          'xpack.streamlang.actionMetadata.sensitiveData.examples.basic',
+          { defaultMessage: 'Redact dates of birth from the message field' }
+        ),
+        yaml: `- action: sensitive_data
+  from: message
+  categories:
+    - date-of-birth`,
+      },
+    ],
+    tips: [
+      i18n.translate('xpack.streamlang.actionMetadata.sensitiveData.tips.catalog', {
+        defaultMessage:
+          'Categories come from a curated catalog; the available set expands over time. No raw patterns are required.',
+      }),
+      i18n.translate('xpack.streamlang.actionMetadata.sensitiveData.tips.esql', {
+        defaultMessage:
+          'In ES|QL, redaction is structural-only (any checksum confirmation runs on the ingest path).',
+      }),
+    ],
+  },
+
   math: {
     name: i18n.translate('xpack.streamlang.actionMetadata.math.name', {
       defaultMessage: 'Math',
