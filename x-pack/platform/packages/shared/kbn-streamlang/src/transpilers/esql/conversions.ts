@@ -37,6 +37,7 @@ import type {
   UserAgentProcessor,
   UriPartsProcessor,
   RegisteredDomainProcessor,
+  SensitiveDataProcessor,
 } from '../../../types/processors';
 import { type StreamlangProcessorDefinition } from '../../../types/processors';
 import {
@@ -68,6 +69,7 @@ import { convertEnrichProcessorToESQL } from './processors/enrich';
 import { convertUserAgentProcessorToESQL } from './processors/user_agent';
 import { convertUriPartsProcessorToESQL } from './processors/uri_parts';
 import { convertRegisteredDomainProcessorToESQL } from './processors/registered_domain';
+import { convertSensitiveDataProcessorToESQL } from './processors/sensitive_data';
 
 async function convertProcessorToESQL(
   processor: StreamlangProcessorDefinition,
@@ -115,6 +117,9 @@ async function convertProcessorToESQL(
 
     case 'redact':
       return convertRedactProcessorToESQL(processor as RedactProcessor);
+
+    case 'sensitive_data':
+      return convertSensitiveDataProcessorToESQL(processor as SensitiveDataProcessor);
 
     case 'uppercase':
       const convertUppercaseProcessorToESQL = createTransformStringESQL('TO_UPPER');

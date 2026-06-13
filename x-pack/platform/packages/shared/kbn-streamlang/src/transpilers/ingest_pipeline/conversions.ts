@@ -31,6 +31,7 @@ import { processJsonExtractProcessor } from './processors/json_extract_processor
 import { processEnrichProcessor } from './processors/enrich_processor';
 import { processJoinProcessor } from './processors/join_processor';
 import { processRegisteredDomainProcessor } from './processors/registered_domain_processor';
+import { processSensitiveDataProcessor } from './processors/sensitive_data_processor';
 
 export async function convertStreamlangDSLActionsToIngestPipelineProcessors(
   actionSteps: StreamlangProcessorDefinition[],
@@ -40,6 +41,29 @@ export async function convertStreamlangDSLActionsToIngestPipelineProcessors(
   const processors = actionSteps.flatMap((actionStep) => {
     const renames = processorFieldRenames[actionStep.action] || {};
     const { action, ...rest } = actionStep;
+
+    if (action === 'sensitive_data') {
+      const tag =
+        actionStep.customIdentifier && transpilationOptions?.traceCustomIdentifiers
+          ? actionStep.customIdentifier
+          : undefined;
+      const ifCondition =
+        actionStep.where !== undefined ? conditionToPainless(actionStep.where) : undefined;
+
+      return processSensitiveDataProcessor(
+        {
+          action: 'sensitive_data',
+          from: actionStep.from,
+          categories: actionStep.categories,
+          structural_only: actionStep.structural_only,
+          description: actionStep.description,
+          ignore_failure: actionStep.ignore_failure,
+          ...(tag !== undefined && { tag }),
+          ...(ifCondition !== undefined && { if: ifCondition }),
+        },
+        { flagNamespace: transpilationOptions?.sensitiveDataFlagNamespace }
+      );
+    }
 
     // Rename Streamlang to Ingest Processor specific fields
     const processorWithRenames = renameFields(

@@ -59,6 +59,7 @@ export function validateProcessorValues(
     case 'append':
     case 'replace':
     case 'redact':
+    case 'sensitive_data':
     case 'remove':
     case 'remove_by_prefix':
     case 'drop_document':

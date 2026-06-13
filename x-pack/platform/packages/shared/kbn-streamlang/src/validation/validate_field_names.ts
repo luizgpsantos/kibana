@@ -72,6 +72,7 @@ export function extractAllFieldNames(processor: StreamlangProcessorDefinition): 
       if (processor.to) fields.push(processor.to);
       break;
     case 'redact':
+    case 'sensitive_data':
       fields.push(processor.from);
       break;
     case 'math':

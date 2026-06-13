@@ -16,6 +16,11 @@ import { applyPostProcessing } from './processors/post_processing';
 export interface IngestPipelineTranspilationOptions {
   ignoreMalformed?: boolean;
   traceCustomIdentifiers?: boolean;
+  /**
+   * Dotted namespace for sensitive_data telemetry flags. Streams pass `attributes.sensitive_data`
+   * for the OTel convention; defaults to the ECS-style top-level `sensitive_data` custom field set.
+   */
+  sensitiveDataFlagNamespace?: string;
 }
 
 export interface IngestPipelineTranspilationResult {

@@ -127,6 +127,7 @@ export function extractModifiedFields(processor: StreamlangProcessorDefinition):
       break;
 
     case 'redact':
+    case 'sensitive_data':
       if (processor.from) {
         fields.push(processor.from);
       }
@@ -295,6 +296,7 @@ export function getProcessorOutputType(
     case 'dissect':
     case 'replace':
     case 'redact':
+    case 'sensitive_data':
     case 'uppercase':
     case 'lowercase':
     case 'trim':
@@ -410,6 +412,7 @@ export function getExpectedInputType(
       return null;
 
     case 'redact':
+    case 'sensitive_data':
       if (processor.from === fieldName) {
         return ['string'];
       }
@@ -529,6 +532,7 @@ export function trackFieldTypesAndValidate(flattenedSteps: StreamlangProcessorDe
       case 'convert':
       case 'replace':
       case 'redact':
+      case 'sensitive_data':
       case 'remove':
       case 'grok':
       case 'dissect':
