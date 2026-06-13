@@ -59,3 +59,44 @@ export {
 export type { CompiledRedactPattern } from './types/utils/grok_to_regex';
 export { streamlangOasDefinitions } from './src/oas_definitions';
 export type { StreamlangOasDefinitions } from './src/oas_definitions';
+export {
+  listCatalogCategories,
+  listLibraryCategories,
+  listRecommendedCategories,
+  createDefaultCategoryConfig,
+  getCategoryKeywordCatalog,
+  getCategoryMaskToken,
+  getDefaultKeywordProximity,
+  getRecommendedKeywords,
+  requiresKeywordProximity,
+  disableRecommendedKeywordsSync,
+  omitKeywordOverrides,
+  withRecommendedKeywords,
+  withoutKeywordOverrides,
+  getActiveDetectors,
+  getDetectorById,
+  getDetectorsByIds,
+  CATALOG,
+  ACTIVE_DETECTOR_IDS,
+} from './src/sensitive_data/catalog';
+export type {
+  CatalogCategory,
+  CategoryKeywordCatalogEntry,
+  Detector,
+  LibraryCategoryEntry,
+  LibraryCategoryGroup,
+  RecommendedCategory,
+} from './src/sensitive_data/catalog';
+export {
+  compileCombinedRedact,
+  compileFromCategories,
+  confirmCandidateRegex,
+  isChecksum,
+} from './src/sensitive_data/compile';
+export {
+  detectorHasValueCapture,
+  detectorSupportsAction,
+  getSupportedActionsForCategory,
+} from './src/sensitive_data/action_capabilities';
+export { normalizeSensitiveDataCategories } from './types/processors';
+export type { SensitiveDataCategory, SensitiveDataCategoryAction } from './types/processors';

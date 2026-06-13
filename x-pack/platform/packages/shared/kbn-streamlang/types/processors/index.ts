@@ -20,6 +20,7 @@ import type { ElasticsearchProcessorType } from './manual_ingest_pipeline_proces
 import { elasticsearchProcessorTypes } from './manual_ingest_pipeline_processors';
 import type { ConvertType } from '../formats/convert_types';
 import { convertTypes } from '../formats/convert_types';
+import { buildDefaultCategoryConfig } from '../../src/sensitive_data/catalog/category_keyword_catalog';
 
 /**
  * Base processor
@@ -492,6 +493,111 @@ export const redactProcessorSchema = processorBaseWithWhereSchema
     'Redact processor - Mask sensitive data using Grok patterns'
   ) satisfies z.Schema<RedactProcessor>;
 
+/** How a configured sensitive-data category mutates or records matches. */
+export type SensitiveDataCategoryAction = 'redact' | 'partial' | 'tag';
+
+/**
+ * One catalog detector configured for this processor step (action, mask token, keywords, etc.).
+ */
+export interface SensitiveDataCategory {
+  id: string;
+  action: SensitiveDataCategoryAction;
+  maskToken?: string;
+  keepLast?: number;
+  keywords?: string[];
+  keywordProximity?: number;
+  /** When true, proximity keywords mirror the catalog recommended list (user may still edit). */
+  useRecommendedKeywords?: boolean;
+}
+
+export const sensitiveDataCategoryActionSchema = z.preprocess(
+  (val) => (val === 'hash' ? 'redact' : val),
+  z.enum(['redact', 'partial', 'tag'])
+);
+
+export const sensitiveDataCategorySchema = z
+  .object({
+    id: NonEmptyString.describe('Detector category slug from the sensitive-data catalog'),
+    action: sensitiveDataCategoryActionSchema.describe(
+      'How to handle matches: full redact, partial redact, or tag-only (telemetry flags only)'
+    ),
+    maskToken: z
+      .optional(NonEmptyString)
+      .describe('Replacement token for redact/partial (defaults to catalog mask token)'),
+    keepLast: z
+      .optional(z.number().int().min(0))
+      .describe('For partial redact: number of trailing characters to keep visible'),
+    keywords: z
+      .optional(z.array(NonEmptyString))
+      .describe('Proximity keyword dictionary override for keyword-gated detectors'),
+    keywordProximity: z
+      .optional(z.number().int().min(0))
+      .describe('Max character distance between a keyword and the match'),
+    useRecommendedKeywords: z
+      .optional(z.boolean())
+      .describe(
+        'When true, keywords were populated from the catalog recommended list; false allows manual-only keywords'
+      ),
+  })
+  .describe(
+    'Configured sensitive-data category instance'
+  ) satisfies z.Schema<SensitiveDataCategory>;
+
+/** Legacy persisted `hash` actions upgrade to `redact` (MessageDigest is not Painless-allowlisted). */
+const coerceLegacyHashAction = (action: SensitiveDataCategoryAction): SensitiveDataCategoryAction =>
+  (action as string) === 'hash' ? 'redact' : action;
+
+/** Normalize persisted config: legacy `string[]` becomes configured category instances. */
+export const normalizeSensitiveDataCategories = (
+  input: string[] | SensitiveDataCategory[]
+): SensitiveDataCategory[] => {
+  if (input.length === 0) {
+    return [];
+  }
+  const first = input[0];
+  if (typeof first === 'string') {
+    return (input as string[]).map((id) => buildDefaultCategoryConfig(id));
+  }
+  return (input as SensitiveDataCategory[]).map((category) => ({
+    ...category,
+    action: coerceLegacyHashAction(category.action),
+  }));
+};
+
+/**
+ * Sensitive Data processor
+ *
+ * Catalog-driven PII redaction. Config is a list of configured category instances (not raw
+ * patterns); the ingest transpiler expands the selection into verified redaction processors.
+ * The ES|QL transpiler is structural-only.
+ */
+export interface SensitiveDataProcessor extends ProcessorBaseWithWhere {
+  action: 'sensitive_data';
+  from: string;
+  categories: SensitiveDataCategory[];
+  structural_only?: boolean;
+}
+
+export const sensitiveDataProcessorSchema = processorBaseWithWhereSchema
+  .extend({
+    action: z.literal('sensitive_data'),
+    from: StreamlangSourceField.describe('Source field to scan for sensitive data'),
+    categories: z
+      .preprocess((val) => {
+        if (!Array.isArray(val)) {
+          return val;
+        }
+        return normalizeSensitiveDataCategories(val as string[] | SensitiveDataCategory[]);
+      }, z.array(sensitiveDataCategorySchema).nonempty())
+      .describe('Configured detector categories from the sensitive-data catalog'),
+    structural_only: z
+      .optional(z.boolean())
+      .describe('Use pattern-only redaction without per-candidate checksum confirmation'),
+  })
+  .describe(
+    'Sensitive Data processor - Catalog-driven PII redaction'
+  ) satisfies z.Schema<SensitiveDataProcessor>;
+
 /**
  * Math processor
  */
@@ -890,6 +996,7 @@ export type StreamlangProcessorDefinition =
   | RemoveProcessor
   | ReplaceProcessor
   | RedactProcessor
+  | SensitiveDataProcessor
   | UppercaseProcessor
   | LowercaseProcessor
   | TrimProcessor
@@ -918,6 +1025,7 @@ export const streamlangProcessorSchema = z.union([
   removeProcessorSchema,
   replaceProcessorSchema,
   redactProcessorSchema,
+  sensitiveDataProcessorSchema,
   uppercaseProcessorSchema,
   lowercaseProcessorSchema,
   trimProcessorSchema,
@@ -976,6 +1084,11 @@ export const isDateProcessorDefinition = createIsNarrowSchema(
 export const isRedactProcessorDefinition = createIsNarrowSchema(
   streamlangProcessorSchema,
   redactProcessorSchema
+);
+
+export const isSensitiveDataProcessorDefinition = createIsNarrowSchema(
+  streamlangProcessorSchema,
+  sensitiveDataProcessorSchema
 );
 
 /**
