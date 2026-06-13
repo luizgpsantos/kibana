@@ -313,6 +313,37 @@ const getAvailableProcessors: (
       );
     },
   },
+  sensitive_data: {
+    type: 'sensitive_data' as const,
+    inputDisplay: i18n.translate(
+      'xpack.streams.streamDetailView.managementTab.enrichment.processor.sensitiveDataInputDisplay',
+      {
+        defaultMessage: 'Sensitive Data',
+      }
+    ),
+    getDocUrl: (docLinks: DocLinksStart) => {
+      return (
+        <FormattedMessage
+          id="xpack.streams.streamDetailView.managementTab.enrichment.processor.sensitiveDataHelpText"
+          defaultMessage="{link} Detect and redact PII using a curated catalog of categories."
+          values={{
+            link: (
+              <EuiLink
+                data-test-subj="streamsAppAvailableProcessorsSensitiveDataLink"
+                external
+                target="_blank"
+                href={docLinks.links.ingest.redact}
+              >
+                {i18n.translate('xpack.streams.availableProcessors.sensitiveDataLinkLabel', {
+                  defaultMessage: 'Catalog-driven sensitive data redaction.',
+                })}
+              </EuiLink>
+            ),
+          }}
+        />
+      );
+    },
+  },
   drop_document: {
     type: 'drop_document' as const,
     inputDisplay: i18n.translate(
@@ -771,6 +802,7 @@ const PROCESSOR_GROUP_MAP: Record<
   split: 'convert',
   sort: 'convert',
   redact: 'convert',
+  sensitive_data: 'convert',
   append: 'set',
   set: 'set',
   rename: 'set',

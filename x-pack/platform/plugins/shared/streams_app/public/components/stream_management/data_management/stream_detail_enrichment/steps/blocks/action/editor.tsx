@@ -56,6 +56,7 @@ import { ProcessorTypeSelector } from './processor_type_selector';
 import { deleteProcessorPromptOptions, discardChangesPromptOptions } from './prompt_options';
 import { ReplaceProcessorForm } from './replace';
 import { RedactProcessorForm } from './redact';
+import { SensitiveDataProcessorForm } from './sensitive_data';
 import { SetProcessorForm } from './set';
 import { SplitProcessorForm } from './split';
 import { SortProcessorForm } from './sort';
@@ -156,6 +157,7 @@ export const ActionBlockEditor = forwardRef<HTMLDivElement, ActionBlockProps>((p
                 {type === 'convert' && <ConvertProcessorForm />}
                 {type === 'replace' && <ReplaceProcessorForm />}
                 {type === 'redact' && <RedactProcessorForm />}
+                {type === 'sensitive_data' && <SensitiveDataProcessorForm />}
                 {type === 'date' && <DateProcessorForm />}
                 {type === 'grok' && <GrokProcessorForm />}
                 {type === 'dissect' && <DissectProcessorForm />}

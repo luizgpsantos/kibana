@@ -17,6 +17,7 @@ import type {
   NetworkDirectionProcessor,
   ProcessorType,
   RedactProcessor,
+  SensitiveDataProcessor,
   ReplaceProcessor,
   SplitProcessor,
   SortProcessor,
@@ -34,6 +35,7 @@ import {
   ALWAYS_CONDITION,
   conditionSchema,
   convertStepToUIDefinition,
+  normalizeSensitiveDataCategories,
   streamlangProcessorSchema,
   stripCustomIdentifiers,
 } from '@kbn/streamlang';
@@ -72,6 +74,7 @@ import type {
   NetworkDirectionFormState,
   ProcessorFormState,
   RedactFormState,
+  SensitiveDataFormState,
   ReplaceFormState,
   SetFormState,
   SplitFormState,
@@ -95,6 +98,7 @@ export const SPECIALISED_TYPES = [
   'set',
   'replace',
   'redact',
+  'sensitive_data',
   'drop_document',
   'uppercase',
   'lowercase',
@@ -241,6 +245,15 @@ const defaultRedactProcessorFormState = (sampleDocs: FlattenRecord[]): RedactFor
   where: ALWAYS_CONDITION,
 });
 
+const defaultSensitiveDataProcessorFormState = (
+  sampleDocs: FlattenRecord[]
+): SensitiveDataFormState => ({
+  action: 'sensitive_data' as const,
+  from: getDefaultTextField(sampleDocs, PRIORITIZED_CONTENT_FIELDS) ?? 'message',
+  // Opt-in: users add categories from the library; legacy processors upgrade on load via schema preprocess.
+  categories: [],
+});
+
 const defaultUppercaseProcessorFormState = (): UppercaseFormState => ({
   action: 'uppercase' as const,
   from: '',
@@ -381,6 +394,7 @@ const defaultProcessorFormStateByType: Record<
   math: defaultMathProcessorFormState,
   replace: defaultReplaceProcessorFormState,
   redact: defaultRedactProcessorFormState,
+  sensitive_data: defaultSensitiveDataProcessorFormState,
   uppercase: defaultUppercaseProcessorFormState,
   lowercase: defaultLowercaseProcessorFormState,
   trim: defaultTrimProcessorFormState,
@@ -426,6 +440,14 @@ export const getFormStateFromActionStep = (
       ...structuredClone(restStep),
       patterns: patterns.map((pattern) => ({ value: pattern })),
     };
+  }
+
+  if (step.action === 'sensitive_data') {
+    const { customIdentifier, parentId, categories, ...restStep } = step;
+    return structuredClone({
+      ...restStep,
+      categories: normalizeSensitiveDataCategories(categories ?? []),
+    });
   }
 
   if (step.action === 'network_direction') {
@@ -682,6 +704,24 @@ export const convertFormStateToProcessor = (
           description,
           where: 'where' in formState ? formState.where : undefined,
         } as RedactProcessor,
+      };
+    }
+
+    if (formState.action === 'sensitive_data') {
+      const { from, categories, structural_only, ignore_failure } = formState;
+
+      return {
+        processorDefinition: {
+          action: 'sensitive_data',
+          from,
+          categories: normalizeSensitiveDataCategories(categories ?? []).filter(
+            (c) => !isEmpty(c.id)
+          ),
+          structural_only: structural_only ?? undefined,
+          ignore_failure,
+          description,
+          where: 'where' in formState ? formState.where : undefined,
+        } as SensitiveDataProcessor,
       };
     }
 

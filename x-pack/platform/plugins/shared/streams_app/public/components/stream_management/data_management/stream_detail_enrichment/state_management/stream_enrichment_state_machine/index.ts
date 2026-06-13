@@ -6,4 +6,5 @@
  */
 
 export * from './use_stream_enrichment';
+export type { SimulationActorSnapshot } from '../simulation_state_machine';
 export type * from './types';

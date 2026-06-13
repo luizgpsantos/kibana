@@ -15,6 +15,7 @@ import type {
   MathProcessor,
   ReplaceProcessor,
   RedactProcessor,
+  SensitiveDataProcessor,
   SetProcessor,
   StreamlangConditionBlockWithUIAttributes,
   UppercaseProcessor,
@@ -67,6 +68,7 @@ export interface RedactPatternField {
 export type RedactFormState = Omit<RedactProcessor, 'patterns'> & {
   patterns: RedactPatternField[];
 };
+export type SensitiveDataFormState = SensitiveDataProcessor;
 export type SetFormState = SetProcessor;
 export type MathFormState = MathProcessor;
 export type UppercaseFormState = UppercaseProcessor;
@@ -97,6 +99,7 @@ export type SpecialisedFormState =
   | ConvertFormState
   | ReplaceFormState
   | RedactFormState
+  | SensitiveDataFormState
   | SetFormState
   | MathFormState
   | UppercaseFormState
