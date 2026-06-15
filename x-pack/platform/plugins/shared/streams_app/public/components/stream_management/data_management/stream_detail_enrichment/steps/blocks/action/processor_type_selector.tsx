@@ -908,3 +908,15 @@ const getProcessorTypeSelectorOptions = (
 
   return result;
 };
+
+const humanizeProcessorActionId = (type: string): string =>
+  type
+    .split('_')
+    .map((part) => (part.length > 0 ? part.charAt(0).toUpperCase() + part.slice(1) : part))
+    .join(' ');
+
+/** Friendly processor label — matches the type selector combo box labels. */
+export const getProcessorDisplayName = (type: ProcessorType | string, isWired = true): string => {
+  const processor = getAvailableProcessors(isWired, false)[type as ProcessorType];
+  return processor?.inputDisplay ?? humanizeProcessorActionId(String(type));
+};

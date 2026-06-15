@@ -21,6 +21,7 @@ import { css } from '@emotion/react';
 import { i18n } from '@kbn/i18n';
 import type { Condition } from '@kbn/streamlang';
 import { isActionBlock } from '@kbn/streamlang';
+import { Streams } from '@kbn/streams-schema';
 import { useSelector } from '@xstate/react';
 import React, { useEffect, useRef, useState } from 'react';
 import useToggle from 'react-use/lib/useToggle';
@@ -34,6 +35,7 @@ import { ConditionDisplay } from '../../../../shared';
 import { getStepPanelColour } from '../../../utils';
 import { BlockDisableOverlay } from '../block_disable_overlay';
 import { StepContextMenu } from '../context_menu';
+import { getProcessorDisplayName } from './processor_display_names';
 import { ProcessorMetricBadges } from './processor_metrics';
 import { ProcessorStatusIndicator } from './processor_status_indicator';
 import { getStepDescription } from './utils';
@@ -72,10 +74,14 @@ export const ActionBlockListItem = (props: ActionBlockProps) => {
     }
   }, [isEditingDescription]);
 
+  const isWired = useStreamEnrichmentSelector((snapshot) =>
+    Streams.WiredStream.GetResponse.is(snapshot.context.definition)
+  );
+
   if (!isActionBlock(step)) return null;
 
   const stepDescription = getStepDescription(step);
-  const actionDisplayName = step.action.toUpperCase();
+  const actionDisplayName = getProcessorDisplayName(step.action, isWired);
 
   const handleTitleClick = () => {
     stepRef.send({ type: 'step.edit' });
@@ -164,7 +170,7 @@ export const ActionBlockListItem = (props: ActionBlockProps) => {
                             {
                               defaultMessage: 'Edit {stepAction} processor',
                               values: {
-                                stepAction: step.action,
+                                stepAction: actionDisplayName,
                               },
                             }
                           )}

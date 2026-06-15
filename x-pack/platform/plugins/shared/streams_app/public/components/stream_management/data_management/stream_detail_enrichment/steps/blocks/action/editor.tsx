@@ -18,6 +18,7 @@ import {
 import { i18n } from '@kbn/i18n';
 import type { StreamlangProcessorDefinitionWithUIAttributes } from '@kbn/streamlang';
 import { isActionBlock } from '@kbn/streamlang';
+import { Streams } from '@kbn/streams-schema';
 import { useSelector } from '@xstate/react';
 import { isEmpty, isEqual } from 'lodash';
 import React, { forwardRef, useEffect, useState } from 'react';
@@ -68,6 +69,7 @@ import { NetworkDirectionProcessorForm } from './network_direction';
 import { EnrichProcessorForm } from './enrich';
 import { UserAgentProcessorForm } from './user_agent';
 import { RegisteredDomainProcessorForm } from './registered_domain';
+import { getProcessorDisplayName } from './processor_display_names';
 
 export const ActionBlockEditor = forwardRef<HTMLDivElement, ActionBlockProps>((props, ref) => {
   const { processorMetrics, stepRef } = props;
@@ -122,6 +124,9 @@ export const ActionBlockEditor = forwardRef<HTMLDivElement, ActionBlockProps>((p
   );
 
   const streamType = useStreamEnrichmentSelector((snapshot) => selectStreamType(snapshot.context));
+  const isWired = useStreamEnrichmentSelector((snapshot) =>
+    Streams.WiredStream.GetResponse.is(snapshot.context.definition)
+  );
 
   const type = useWatch({ control: methods.control, name: 'action' });
 
@@ -147,7 +152,7 @@ export const ActionBlockEditor = forwardRef<HTMLDivElement, ActionBlockProps>((p
   return (
     <div ref={ref}>
       <EuiFlexGroup gutterSize="s" direction="column">
-        <strong>{step.action.toUpperCase()}</strong>
+        <strong>{getProcessorDisplayName(step.action, isWired)}</strong>
         <EuiFlexItem>
           <FormProvider {...methods}>
             <ProcessorContextProvider processorId={step.customIdentifier}>

@@ -6,7 +6,62 @@
  */
 
 import { i18n } from '@kbn/i18n';
+import { listCatalogCategories } from '@kbn/streamlang';
 import type { StreamlangProcessorDefinitionWithUIAttributes } from '@kbn/streamlang';
+
+const SENSITIVE_DATA_SUMMARY_VISIBLE_NAMES = 4;
+
+const sensitiveDataCategoryLabels = (): Map<string, string> =>
+  new Map(listCatalogCategories().map((category) => [category.id, category.displayName] as const));
+
+const formatSensitiveDataCategoryList = (
+  categoryIds: readonly string[],
+  labels: Map<string, string>
+): string => {
+  const names = categoryIds.map((id) => labels.get(id) ?? id);
+  if (names.length <= SENSITIVE_DATA_SUMMARY_VISIBLE_NAMES) {
+    return names.join(', ');
+  }
+  return i18n.translate(
+    'xpack.streams.streamDetailView.managementTab.enrichment.sensitiveDataProcessorDescriptionTruncated',
+    {
+      defaultMessage: '{names} (+{remaining} more)',
+      values: {
+        names: names.slice(0, SENSITIVE_DATA_SUMMARY_VISIBLE_NAMES).join(', '),
+        remaining: names.length - SENSITIVE_DATA_SUMMARY_VISIBLE_NAMES,
+      },
+    }
+  );
+};
+
+/** Human-readable collapsed-step summary for sensitive_data processors. */
+export const getSensitiveDataStepDescription = (
+  from: string,
+  categories: ReadonlyArray<{ id: string }>
+): string => {
+  const configured = categories.filter((category) => category.id.trim().length > 0);
+  const labels = sensitiveDataCategoryLabels();
+  const count = configured.length;
+
+  const prefix = i18n.translate(
+    'xpack.streams.streamDetailView.managementTab.enrichment.sensitiveDataProcessorDescription',
+    {
+      defaultMessage:
+        'Redact {count, plural, one {# category} other {# categories}} from "{field}"',
+      values: { count, field: from },
+    }
+  );
+
+  if (count === 0) {
+    return prefix;
+  }
+
+  const nameList = formatSensitiveDataCategoryList(
+    configured.map((category) => category.id),
+    labels
+  );
+  return `${prefix}: ${nameList}`;
+};
 
 export const getStepDescription = (step: StreamlangProcessorDefinitionWithUIAttributes) => {
   if ('action' in step) {
@@ -243,6 +298,8 @@ export const getStepDescription = (step: StreamlangProcessorDefinitionWithUIAttr
           },
         }
       );
+    } else if (step.action === 'sensitive_data') {
+      return getSensitiveDataStepDescription(step.from, step.categories);
     } else {
       const { action, parentId, customIdentifier, ignore_failure, ...rest } = step;
       // Remove 'where' if it exists (some processors have it, some don't)
