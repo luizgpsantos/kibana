@@ -44,6 +44,12 @@ const ACTION_OPTIONS: Array<{ value: SensitiveDataCategoryAction; text: string }
     }),
   },
   {
+    value: 'hash',
+    text: i18n.translate('xpack.streams.sensitiveData.action.hash', {
+      defaultMessage: 'Hash (fingerprint)',
+    }),
+  },
+  {
     value: 'partial',
     text: i18n.translate('xpack.streams.sensitiveData.action.partial', {
       defaultMessage: 'Partial redact',
@@ -250,6 +256,14 @@ export const ConfiguredCategories = ({ onAddCategories }: ConfiguredCategoriesPr
                       data-test-subj={`sensitiveData-action-${category.id}`}
                     />
                   </EuiFormRow>
+                )}
+                {category.action === 'hash' && (
+                  <EuiText size="xs" color="subdued">
+                    {i18n.translate('xpack.streams.sensitiveData.settings.hashHelp', {
+                      defaultMessage:
+                        'Replaces matched values with a consistent FNV-1a 64-bit fingerprint (h:…). Useful for counting unique values and correlating events without seeing raw data. ES|QL preview shows redaction where ingest will hash.',
+                    })}
+                  </EuiText>
                 )}
                 {(category.action === 'redact' || category.action === 'partial') && (
                   <EuiFormRow

@@ -176,6 +176,7 @@ export const CategoryLibraryFlyout = ({
         <EuiSpacer size="s" />
         <EuiSelectable
           options={options}
+          listProps={{ isVirtualized: false }}
           onChange={(newOptions) => {
             const next: Record<string, boolean> = {};
             for (const opt of newOptions) {
