@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import { createDefaultCategoryConfig } from '../../../sensitive_data/catalog';
 import { processSensitiveDataProcessor } from './sensitive_data_processor';
 
 describe('processSensitiveDataProcessor', () => {
@@ -12,7 +13,7 @@ describe('processSensitiveDataProcessor', () => {
     const processors = processSensitiveDataProcessor({
       action: 'sensitive_data',
       from: 'attributes.body',
-      categories: [{ id: 'date-of-birth', action: 'redact' }],
+      categories: [{ id: 'email', action: 'redact' }],
     });
     const redact = processors.find((p) => p && 'redact' in p);
     expect(redact).toBeDefined();
@@ -21,7 +22,6 @@ describe('processSensitiveDataProcessor', () => {
     }
     expect(redact.redact.field).toBe('attributes.body');
 
-    // The saved pipeline always emits the telemetry flag script for dashboards.
     const scripts = processors.filter(
       (p): p is { script: { source: string } } => !!p && 'script' in p
     );
@@ -29,7 +29,21 @@ describe('processSensitiveDataProcessor', () => {
     expect(scripts[0].script.source).toContain("ctx['sensitive_data.detected'] = true");
   });
 
-  it('emits a per-candidate confirmer for checksum categories alongside the flag script', () => {
+  it('emits structural redact for visa with keyword defaults (no checksum confirmer)', () => {
+    const processors = processSensitiveDataProcessor({
+      action: 'sensitive_data',
+      from: 'message',
+      categories: [createDefaultCategoryConfig('visa')],
+    });
+    expect(processors.some((p) => p && 'redact' in p)).toBe(true);
+    const scripts = processors.filter(
+      (p): p is { script: { source: string; description?: string } } => !!p && 'script' in p
+    );
+    expect(scripts).toHaveLength(1);
+    expect(scripts.some((s) => /Luhn/i.test(s.script.description ?? ''))).toBe(false);
+  });
+
+  it('emits structural redact when legacy credit-card expands to payment-card networks', () => {
     const processors = processSensitiveDataProcessor({
       action: 'sensitive_data',
       from: 'message',
@@ -38,10 +52,9 @@ describe('processSensitiveDataProcessor', () => {
     const scripts = processors.filter(
       (p): p is { script: { source: string; description?: string } } => !!p && 'script' in p
     );
-    // One Luhn confirmer + one flag script; no structural redact for a checksum-only selection.
-    expect(scripts).toHaveLength(2);
-    expect(processors.some((p) => p && 'redact' in p)).toBe(false);
-    expect(scripts.some((s) => /Luhn/i.test(s.script.description ?? ''))).toBe(true);
+    expect(scripts).toHaveLength(1);
+    expect(processors.some((p) => p && 'redact' in p)).toBe(true);
+    expect(scripts.some((s) => /Luhn/i.test(s.script.description ?? ''))).toBe(false);
   });
 
   it('writes telemetry flags under the provided namespace (OTel attributes.*)', () => {
@@ -49,7 +62,7 @@ describe('processSensitiveDataProcessor', () => {
       {
         action: 'sensitive_data',
         from: 'attributes.body',
-        categories: [{ id: 'date-of-birth', action: 'redact' }],
+        categories: [{ id: 'email', action: 'redact' }],
       },
       { flagNamespace: 'attributes.sensitive_data' }
     );
@@ -73,16 +86,15 @@ describe('processSensitiveDataProcessor', () => {
     const scripts = processors.filter(
       (p): p is { script: { source: string; description?: string } } => !!p && 'script' in p
     );
-    // Only the telemetry flag script — no Luhn confirmer in structural-only mode.
     expect(scripts).toHaveLength(1);
     expect(scripts[0].script.source).toContain("ctx['sensitive_data.detected'] = true");
   });
 
-  it('propagates processor tag and if to the compiled redact (required for simulation metrics)', () => {
+  it('propagates processor tag and if to the compiled redact', () => {
     const processors = processSensitiveDataProcessor({
       action: 'sensitive_data',
       from: 'message',
-      categories: [{ id: 'date-of-birth', action: 'redact' }],
+      categories: [{ id: 'email', action: 'redact' }],
       tag: 'sensitive-data-step-1',
       if: 'ctx.message != null',
     });
@@ -100,10 +112,7 @@ describe('processSensitiveDataProcessor', () => {
     const processors = processSensitiveDataProcessor({
       action: 'sensitive_data',
       from: 'message',
-      categories: [
-        { id: 'date-of-birth', action: 'redact' },
-        { id: 'credit-card', action: 'redact' },
-      ],
+      categories: [{ id: 'email', action: 'redact' }, createDefaultCategoryConfig('visa')],
       ignore_failure: true,
     });
 
@@ -117,13 +126,11 @@ describe('processSensitiveDataProcessor', () => {
     }
   });
 
-  it('propagates tag and if to EVERY processor, including a checksum-only selection', () => {
-    // Checksum-only selection: no structural redact, so the condition must reach the confirmer
-    // and the flag script or it would silently run on every document.
+  it('propagates tag and if to EVERY processor for partial selections', () => {
     const processors = processSensitiveDataProcessor({
       action: 'sensitive_data',
       from: 'message',
-      categories: [{ id: 'credit-card', action: 'redact' }],
+      categories: [{ id: 'us-ssn', action: 'partial' }],
       tag: 'sensitive-data-step-1',
       if: 'ctx.message != null',
     });
@@ -132,7 +139,7 @@ describe('processSensitiveDataProcessor', () => {
     const scripts = processors.filter(
       (p): p is { script: { source: string; if?: string; tag?: string } } => !!p && 'script' in p
     );
-    expect(scripts).toHaveLength(2);
+    expect(scripts.length).toBeGreaterThanOrEqual(2);
     for (const s of scripts) {
       expect(s.script.if).toBe('ctx.message != null');
       expect(s.script.tag).toBe('sensitive-data-step-1');

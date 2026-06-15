@@ -100,20 +100,23 @@ export const applyKeywordOverride = (
   if (!config.keywords?.length || !requiresKeywordProximity(detector.id)) {
     return detector;
   }
-  const proximity = config.keywordProximity ?? getDefaultKeywordProximity(detector.id) ?? 20;
+  const proximity = config.keywordProximity ?? getDefaultKeywordProximity(detector.id) ?? 30;
   const keywordAlt = config.keywords.map(escapeRegexKeyword).join('|');
   const gate = keywordFirstCharGate(config.keywords);
   const prefix = `(?i)${gate}(?:${keywordAlt})[^0-9A-Za-z]{0,${proximity}}+\\K`;
-  const pat = detector.detection.grokPatterns[0];
-  const kIndex = pat.indexOf('\\K');
-  if (kIndex < 0) {
-    return detector;
-  }
+  const applyToPattern = (pat: string): string => {
+    const kIndex = pat.indexOf('\\K');
+    if (kIndex < 0) {
+      return prefix + pat;
+    }
+    // Detectors already anchor with `\K`; drop it so we do not emit `\K\K` before the grok capture.
+    return prefix + pat.slice(kIndex + 2);
+  };
   return {
     ...detector,
     detection: {
       ...detector.detection,
-      grokPatterns: [prefix + pat.slice(kIndex)],
+      grokPatterns: detector.detection.grokPatterns.map(applyToPattern),
     },
   };
 };
@@ -142,6 +145,15 @@ export const resolveCategoryEntries = (
     );
     if (warning) {
       warnings.push(warning);
+    }
+    if (
+      requiresKeywordProximity(config.id) &&
+      !normalizedConfig.keywords?.length &&
+      normalizedConfig.useRecommendedKeywords !== true
+    ) {
+      warnings.push(
+        `Category "${config.id}": keyword proximity is recommended; matches may include false positives without nearby keywords.`
+      );
     }
     entries.push({ config: normalizedConfig, detector: detectorWithKeywords });
   }

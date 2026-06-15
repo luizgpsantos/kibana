@@ -31,20 +31,7 @@ const mockEsClient = (settings: {
 
 describe('painless_regex_guard', () => {
   describe('processingUsesChecksumRedaction', () => {
-    it('is true for a checksum detector (credit-card)', () => {
-      const processing: StreamlangDSL = {
-        steps: [
-          {
-            action: 'sensitive_data',
-            from: 'message',
-            categories: [{ id: 'credit-card', action: 'redact' }],
-          },
-        ],
-      };
-      expect(processingUsesChecksumRedaction(processing)).toBe(true);
-    });
-
-    it('is false for structural-only detectors (email/date-of-birth)', () => {
+    it('is false for full-redact on structural detectors', () => {
       const processing: StreamlangDSL = {
         steps: [
           {
@@ -52,7 +39,8 @@ describe('painless_regex_guard', () => {
             from: 'message',
             categories: [
               { id: 'email', action: 'redact' },
-              { id: 'date-of-birth', action: 'redact' },
+              { id: 'visa', action: 'redact' },
+              { id: 'iban', action: 'redact' },
             ],
           },
         ],
@@ -60,13 +48,26 @@ describe('painless_regex_guard', () => {
       expect(processingUsesChecksumRedaction(processing)).toBe(false);
     });
 
-    it('is false when a checksum detector runs in structural_only mode (no regex script)', () => {
+    it('is false when legacy credit-card expands to payment-card networks (structural redact)', () => {
       const processing: StreamlangDSL = {
         steps: [
           {
             action: 'sensitive_data',
             from: 'message',
             categories: [{ id: 'credit-card', action: 'redact' }],
+          },
+        ],
+      };
+      expect(processingUsesChecksumRedaction(processing)).toBe(false);
+    });
+
+    it('is false when structural_only is enabled', () => {
+      const processing: StreamlangDSL = {
+        steps: [
+          {
+            action: 'sensitive_data',
+            from: 'message',
+            categories: [{ id: 'us-ssn', action: 'partial' }],
             structural_only: true,
           },
         ],
@@ -74,7 +75,7 @@ describe('painless_regex_guard', () => {
       expect(processingUsesChecksumRedaction(processing)).toBe(false);
     });
 
-    it('finds checksum steps nested inside condition blocks', () => {
+    it('finds partial steps nested inside condition blocks', () => {
       const processing: StreamlangDSL = {
         steps: [
           {
@@ -85,7 +86,7 @@ describe('painless_regex_guard', () => {
                 {
                   action: 'sensitive_data',
                   from: 'message',
-                  categories: [{ id: 'iban', action: 'redact' }],
+                  categories: [{ id: 'iban', action: 'partial' }],
                 },
               ],
             },
@@ -119,13 +120,13 @@ describe('painless_regex_guard', () => {
   });
 
   describe('checkSensitiveDataPainlessRegex', () => {
-    it('returns the guard message when checksum redaction meets a disabled cluster', async () => {
+    it('returns the guard message when partial redaction meets a disabled cluster', async () => {
       const processing: StreamlangDSL = {
         steps: [
           {
             action: 'sensitive_data',
             from: 'message',
-            categories: [{ id: 'credit-card', action: 'redact' }],
+            categories: [{ id: 'visa', action: 'partial' }],
           },
         ],
       };
@@ -151,12 +152,11 @@ describe('painless_regex_guard', () => {
     });
   });
 
-  it('accepts legacy string[] categories via normalization', () => {
-    // Backward-compat: persisted pipelines may still store category ids as strings.
+  it('accepts legacy string[] categories via normalization without requiring regex', () => {
     const processing = {
       steps: [{ action: 'sensitive_data', from: 'message', categories: ['credit-card'] }],
     } as unknown as StreamlangDSL;
-    expect(processingUsesChecksumRedaction(processing)).toBe(true);
+    expect(processingUsesChecksumRedaction(processing)).toBe(false);
   });
 
   describe('categoryUsesPainlessRegex', () => {
@@ -174,10 +174,7 @@ describe('painless_regex_guard', () => {
       expect(processingUsesChecksumRedaction(processing)).toBe(false);
     });
 
-    // --- Bug regression: partial and tag actions emit Painless regex scripts regardless of
-    //     whether the detector uses a checksum. The guard must fire for those too. ---
-
-    it('is true for a non-checksum detector with partial action', () => {
+    it('is true for a structural detector with partial action', () => {
       const processing: StreamlangDSL = {
         steps: [
           {
@@ -190,20 +187,20 @@ describe('painless_regex_guard', () => {
       expect(processingUsesChecksumRedaction(processing)).toBe(true);
     });
 
-    it('is true for a non-checksum detector with tag action', () => {
+    it('is true for a keyword-gated detector with tag action', () => {
       const processing: StreamlangDSL = {
         steps: [
           {
             action: 'sensitive_data',
             from: 'message',
-            categories: [{ id: 'date-of-birth', action: 'tag' }],
+            categories: [{ id: 'us-ssn', action: 'tag' }],
           },
         ],
       };
       expect(processingUsesChecksumRedaction(processing)).toBe(true);
     });
 
-    it('is true for us-ssn with partial action (keyword-gated structural detector)', () => {
+    it('is true for us-ssn with partial action', () => {
       const processing: StreamlangDSL = {
         steps: [
           {
@@ -215,14 +212,27 @@ describe('painless_regex_guard', () => {
       };
       expect(processingUsesChecksumRedaction(processing)).toBe(true);
     });
+
+    it('drops legacy date-of-birth during normalization', () => {
+      const processing: StreamlangDSL = {
+        steps: [
+          {
+            action: 'sensitive_data',
+            from: 'message',
+            categories: [{ id: 'date-of-birth', action: 'tag' }],
+          },
+        ],
+      };
+      expect(processingUsesChecksumRedaction(processing)).toBe(false);
+    });
   });
 
   describe('PAINLESS_REGEX_DISABLED_MESSAGE accuracy', () => {
-    it('mentions partial and tag actions alongside checksum detectors', () => {
+    it('mentions partial and tag actions', () => {
       expect(PAINLESS_REGEX_DISABLED_MESSAGE).toMatch(/partial/i);
       expect(PAINLESS_REGEX_DISABLED_MESSAGE).toMatch(/tag/i);
-      expect(PAINLESS_REGEX_DISABLED_MESSAGE).toMatch(/credit card/i);
-      expect(PAINLESS_REGEX_DISABLED_MESSAGE).toMatch(/iban/i);
+      expect(PAINLESS_REGEX_DISABLED_MESSAGE).not.toMatch(/credit card/i);
+      expect(PAINLESS_REGEX_DISABLED_MESSAGE).not.toMatch(/date-of-birth/i);
     });
 
     it('returns the guard message for email+partial on a regex-disabled cluster', async () => {
@@ -238,17 +248,16 @@ describe('painless_regex_guard', () => {
       const esClient = mockEsClient({ persistent: { 'script.painless.regex.enabled': 'false' } });
       const result = await checkSensitiveDataPainlessRegex(processing, esClient);
       expect(result).toBe(PAINLESS_REGEX_DISABLED_MESSAGE);
-      // The message must not mislead the user by naming only checksum detectors
       expect(result).toMatch(/partial/i);
     });
 
-    it('returns the guard message for date-of-birth+tag on a regex-disabled cluster', async () => {
+    it('returns the guard message for us-ssn+tag on a regex-disabled cluster', async () => {
       const processing: StreamlangDSL = {
         steps: [
           {
             action: 'sensitive_data',
             from: 'message',
-            categories: [{ id: 'date-of-birth', action: 'tag' }],
+            categories: [{ id: 'us-ssn', action: 'tag' }],
           },
         ],
       };

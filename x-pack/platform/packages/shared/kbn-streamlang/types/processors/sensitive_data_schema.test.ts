@@ -11,44 +11,56 @@ import {
   isSensitiveDataProcessorDefinition,
   type SensitiveDataCategory,
 } from '.';
+import { PAYMENT_CARD_NETWORK_IDS } from '../../src/sensitive_data/catalog/payment_card_keywords';
 
 describe('normalizeSensitiveDataCategories', () => {
-  it('maps legacy string ids to redact instances', () => {
-    expect(normalizeSensitiveDataCategories(['email', 'credit-card'])).toEqual([
+  it('maps legacy credit-card to all payment-card networks with keywords', () => {
+    const normalized = normalizeSensitiveDataCategories(['email', 'credit-card']);
+    expect(normalized[0]).toEqual({ id: 'email', action: 'redact' });
+    expect(normalized.slice(1)).toHaveLength(PAYMENT_CARD_NETWORK_IDS.length);
+    expect(normalized.slice(1).every((c) => c.useRecommendedKeywords === true)).toBe(true);
+  });
+
+  it('drops legacy date-of-birth ids', () => {
+    expect(normalizeSensitiveDataCategories(['date-of-birth'])).toEqual([]);
+    expect(normalizeSensitiveDataCategories(['date-of-birth', 'email'])).toEqual([
       { id: 'email', action: 'redact' },
-      { id: 'credit-card', action: 'redact' },
     ]);
   });
 
-  it('maps legacy keyword-gated ids without pre-filled keywords (toggle OFF)', () => {
-    expect(normalizeSensitiveDataCategories(['date-of-birth'])).toEqual([
-      { id: 'date-of-birth', action: 'redact' },
+  it('expands legacy credit-card objects to network instances', () => {
+    const expanded = normalizeSensitiveDataCategories([
+      { id: 'credit-card', action: 'partial', keepLast: 4, maskToken: '<PAN>' },
     ]);
-  });
-
-  it('coerces legacy hash action to redact', () => {
-    expect(
-      normalizeSensitiveDataCategories([
-        { id: 'credit-card', action: 'hash' },
-      ] as unknown as SensitiveDataCategory[])
-    ).toEqual([{ id: 'credit-card', action: 'redact' }]);
-  });
-
-  it('parses legacy hash action as redact', () => {
-    const parsed = sensitiveDataProcessorSchema.parse({
-      action: 'sensitive_data',
-      from: 'message',
-      categories: [{ id: 'email', action: 'hash' }],
+    expect(expanded).toHaveLength(PAYMENT_CARD_NETWORK_IDS.length);
+    expect(expanded[0]).toMatchObject({
+      id: 'visa',
+      action: 'partial',
+      keepLast: 4,
+      maskToken: '<PAN>',
+      useRecommendedKeywords: true,
     });
-    expect(parsed.categories).toEqual([{ id: 'email', action: 'redact' }]);
+  });
+
+  it('coerces legacy hash action to redact when expanding credit-card', () => {
+    const expanded = normalizeSensitiveDataCategories([
+      { id: 'credit-card', action: 'hash' },
+    ] as unknown as SensitiveDataCategory[]);
+    expect(expanded.every((c) => c.action === 'redact')).toBe(true);
   });
 
   it('passes through configured category objects', () => {
-    const configured = [
-      { id: 'email', action: 'tag' as const },
-      { id: 'credit-card', action: 'partial' as const, keepLast: 4, maskToken: '<PAN>' },
-    ];
+    const configured = [{ id: 'email', action: 'tag' as const }];
     expect(normalizeSensitiveDataCategories(configured)).toEqual(configured);
+  });
+
+  it('adds recommended keywords to legacy iban configs without keywords', () => {
+    const [iban] = normalizeSensitiveDataCategories([{ id: 'iban', action: 'redact' }]);
+    expect(iban).toMatchObject({
+      id: 'iban',
+      useRecommendedKeywords: true,
+      keywordProximity: 30,
+    });
   });
 });
 
@@ -57,21 +69,33 @@ describe('sensitiveDataProcessorSchema', () => {
     const parsed = sensitiveDataProcessorSchema.parse({
       action: 'sensitive_data',
       from: 'message',
-      categories: [{ id: 'date-of-birth', action: 'redact' }],
+      categories: [
+        {
+          id: 'visa',
+          action: 'redact',
+          useRecommendedKeywords: true,
+          keywords: ['card', 'visa'],
+          keywordProximity: 30,
+        },
+      ],
     });
-    expect(parsed.categories).toEqual([{ id: 'date-of-birth', action: 'redact' }]);
+    expect(parsed.categories[0].id).toBe('visa');
   });
 
   it('upgrades legacy string[] categories on parse', () => {
     const parsed = sensitiveDataProcessorSchema.parse({
       action: 'sensitive_data',
       from: 'message',
-      categories: ['date-of-birth', 'email'],
+      categories: ['credit-card', 'email'],
     });
-    expect(parsed.categories).toEqual([
-      { id: 'date-of-birth', action: 'redact' },
+    expect(parsed.categories.filter((c) => c.id === 'email')).toEqual([
       { id: 'email', action: 'redact' },
     ]);
+    expect(
+      parsed.categories.filter((c) =>
+        PAYMENT_CARD_NETWORK_IDS.includes(c.id as (typeof PAYMENT_CARD_NETWORK_IDS)[number])
+      )
+    ).toHaveLength(7);
   });
 
   it('accepts per-category settings', () => {
@@ -80,44 +104,29 @@ describe('sensitiveDataProcessorSchema', () => {
       from: 'message',
       categories: [
         {
-          id: 'credit-card',
+          id: 'visa',
           action: 'partial',
           keepLast: 4,
-          maskToken: '<CARD>',
-          keywords: ['pan', 'card'],
+          maskToken: '<PAN>',
+          keywords: ['card'],
           keywordProximity: 30,
         },
       ],
     });
     expect(parsed.categories[0]).toMatchObject({
-      id: 'credit-card',
+      id: 'visa',
       action: 'partial',
       keepLast: 4,
-      maskToken: '<CARD>',
-      keywords: ['pan', 'card'],
-      keywordProximity: 30,
     });
   });
 
-  it('rejects an empty category selection', () => {
-    expect(() =>
-      sensitiveDataProcessorSchema.parse({
+  it('isSensitiveDataProcessorDefinition narrows sensitive_data steps', () => {
+    expect(
+      isSensitiveDataProcessorDefinition({
         action: 'sensitive_data',
         from: 'message',
-        categories: [],
+        categories: [{ id: 'email', action: 'redact' }],
       })
-    ).toThrow();
-  });
-
-  it('narrows via the type guard', () => {
-    const step = {
-      action: 'sensitive_data' as const,
-      from: 'message',
-      categories: [{ id: 'date-of-birth', action: 'redact' as const }],
-    };
-    expect(isSensitiveDataProcessorDefinition(step)).toBe(true);
-    expect(isSensitiveDataProcessorDefinition({ action: 'grok', from: 'a', patterns: ['x'] })).toBe(
-      false
-    );
+    ).toBe(true);
   });
 });

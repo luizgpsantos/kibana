@@ -793,13 +793,13 @@ describe('validateSimulation (save-path Painless regex guard)', () => {
     } as Awaited<ReturnType<typeof executePipelineSimulation>>);
   });
 
-  it('rejects a checksum detector with the typed error when Painless regex is disabled, without writing the pipeline', async () => {
+  it('rejects partial redact with the typed error when Painless regex is disabled, without writing the pipeline', async () => {
     const { esClient } = mockEsClient('false');
     const definition = createDefinitionWithSteps([
       {
         action: 'sensitive_data',
         from: 'body.text',
-        categories: [{ id: 'credit-card', action: 'redact' }],
+        categories: [{ id: 'us-ssn', action: 'partial' }],
       },
     ]);
 
@@ -807,11 +807,10 @@ describe('validateSimulation (save-path Painless regex guard)', () => {
     await expect(validateSimulation(definition, esClient)).rejects.toThrow(
       PAINLESS_REGEX_DISABLED_MESSAGE
     );
-    // The pipeline simulation (which is what persists/validates the real pipeline) never runs.
     expect(executePipelineSimulationMock).not.toHaveBeenCalled();
   });
 
-  it('allows a checksum detector when the setting is "limited" (default) and reads cluster settings exactly once', async () => {
+  it('allows full redact when the setting is "limited" (default) without reading cluster settings', async () => {
     const { esClient, getSettings } = mockEsClient('limited');
     const definition = createDefinitionWithSteps([
       {
@@ -822,12 +821,11 @@ describe('validateSimulation (save-path Painless regex guard)', () => {
     ]);
 
     await expect(validateSimulation(definition, esClient)).resolves.toBeUndefined();
-    // The guard runs exactly once per validate: a single cluster.getSettings read, no double call.
-    expect(getSettings).toHaveBeenCalledTimes(1);
+    expect(getSettings).not.toHaveBeenCalled();
     expect(executePipelineSimulationMock).toHaveBeenCalledTimes(1);
   });
 
-  it('allows a checksum detector when the setting is absent (default)', async () => {
+  it('allows legacy credit-card full redact when the setting is absent (default)', async () => {
     const { esClient } = mockEsClient();
     const definition = createDefinitionWithSteps([
       {
@@ -856,7 +854,7 @@ describe('validateSimulation (save-path Painless regex guard)', () => {
     expect(executePipelineSimulationMock).toHaveBeenCalledTimes(1);
   });
 
-  it('saves a checksum detector in structural_only mode regardless of the setting (no regex script)', async () => {
+  it('saves expanded legacy credit-card in structural_only mode regardless of the setting', async () => {
     const { esClient, getSettings } = mockEsClient('false');
     const definition = createDefinitionWithSteps([
       {

@@ -88,7 +88,7 @@ export const isPainlessRegexDisabled = async (esClient: ElasticsearchClient): Pr
 };
 
 export const PAINLESS_REGEX_DISABLED_MESSAGE =
-  'This processor configuration requires Painless regular expressions, which are disabled on this cluster (script.painless.regex.enabled is set to "false"). Checksum-confirmed detectors (credit card, IBAN) always require Painless regex; partial-redact and tag actions on any detector also emit regex scripts. Enable the setting, switch to structural_only mode, or use only full-redact (action: "redact") on structural detectors (email, date-of-birth, US SSN) to continue.';
+  'This processor configuration requires Painless regular expressions, which are disabled on this cluster (script.painless.regex.enabled is set to "false"). Partial-redact and tag actions emit Painless regex scripts. Enable the setting, switch to structural_only mode, or use only full-redact (action: "redact") to continue without regex scripts.';
 
 /**
  * Returns an error message when the processing needs Painless regex but the cluster has it disabled,

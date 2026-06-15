@@ -6,11 +6,18 @@
  */
 
 import { catalogIndexData } from './catalog_data';
+import { amexDetector } from './detectors/amex_data';
 import { creditCardDetector } from './detectors/credit_card_data';
 import { dateOfBirthDetector } from './detectors/date_of_birth_data';
+import { dinersDetector } from './detectors/diners_data';
+import { discoverDetector } from './detectors/discover_data';
 import { emailDetector } from './detectors/email_data';
 import { ibanDetector } from './detectors/iban_data';
+import { jcbDetector } from './detectors/jcb_data';
+import { maestroDetector } from './detectors/maestro_data';
+import { mastercardDetector } from './detectors/mastercard_data';
 import { usSsnDetector } from './detectors/us_ssn_data';
+import { visaDetector } from './detectors/visa_data';
 import type { SensitiveDataCategory } from '../../../types/processors';
 import { buildDefaultCategoryConfig, getCategoryKeywordCatalog } from './category_keyword_catalog';
 
@@ -26,6 +33,14 @@ export {
   withoutKeywordOverrides,
 } from './category_keyword_catalog';
 export type { CategoryKeywordCatalogEntry } from './category_keyword_catalog';
+export {
+  PAYMENT_CARD_NETWORK_IDS,
+  PAYMENT_CARD_KEYWORD_PROXIMITY,
+  SHARED_PAYMENT_CARD_KEYWORDS,
+  paymentCardKeywords,
+} from './payment_card_keywords';
+export type { PaymentCardNetworkId } from './payment_card_keywords';
+import { PAYMENT_CARD_NETWORK_IDS } from './payment_card_keywords';
 import { maskToken } from '../mask';
 
 /** Default configured instance when adding a category from the library. */
@@ -69,24 +84,31 @@ export const CATALOG: CatalogMetadata = {
   defaultAction: catalogIndexData.defaultAction,
 };
 
-/** All detectors physically vendored into the package. */
+/** All detectors physically vendored into the package (includes legacy ids for migration). */
 export const DETECTORS: Readonly<Record<string, Detector>> = {
-  'date-of-birth': dateOfBirthDetector as Detector,
+  visa: visaDetector as Detector,
+  mastercard: mastercardDetector as Detector,
+  amex: amexDetector as Detector,
+  discover: discoverDetector as Detector,
+  diners: dinersDetector as Detector,
+  jcb: jcbDetector as Detector,
+  maestro: maestroDetector as Detector,
   email: emailDetector as Detector,
-  'credit-card': creditCardDetector as Detector,
   iban: ibanDetector as Detector,
   'us-ssn': usSsnDetector as Detector,
+  /** Legacy generic card id — migrated to payment-card network ids; retained for checksum compile tests. */
+  'credit-card': creditCardDetector as Detector,
+  /** Inactive — removed from the active set; retained for migration warnings only. */
+  'date-of-birth': dateOfBirthDetector as Detector,
 };
 
 /**
- * The detection "scope dial": which vendored detectors are active in the product right now.
- * Plan 6 (v2): adds per-candidate checksum confirmation (Luhn/mod-97) and graduates `iban` and
- * `us-ssn` into the active set alongside the Plan 5 structural detectors.
+ * Detectors offered in the product UI and library flyout.
+ * Payment cards use per-network issuer-prefix patterns with required keyword proximity.
  */
 export const ACTIVE_DETECTOR_IDS: readonly string[] = [
-  'date-of-birth',
   'email',
-  'credit-card',
+  ...PAYMENT_CARD_NETWORK_IDS,
   'iban',
   'us-ssn',
 ];

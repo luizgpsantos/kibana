@@ -20,7 +20,12 @@ import type { ElasticsearchProcessorType } from './manual_ingest_pipeline_proces
 import { elasticsearchProcessorTypes } from './manual_ingest_pipeline_processors';
 import type { ConvertType } from '../formats/convert_types';
 import { convertTypes } from '../formats/convert_types';
-import { buildDefaultCategoryConfig } from '../../src/sensitive_data/catalog/category_keyword_catalog';
+import {
+  buildDefaultCategoryConfig,
+  requiresKeywordProximity,
+  withRecommendedKeywords,
+} from '../../src/sensitive_data/catalog/category_keyword_catalog';
+import { PAYMENT_CARD_NETWORK_IDS } from '../../src/sensitive_data/catalog/payment_card_keywords';
 
 /**
  * Base processor
@@ -547,6 +552,28 @@ export const sensitiveDataCategorySchema = z
 const coerceLegacyHashAction = (action: SensitiveDataCategoryAction): SensitiveDataCategoryAction =>
   (action as string) === 'hash' ? 'redact' : action;
 
+const expandLegacyCategory = (category: SensitiveDataCategory): SensitiveDataCategory[] => {
+  if (category.id === 'date-of-birth') {
+    return [];
+  }
+  if (category.id === 'credit-card') {
+    return PAYMENT_CARD_NETWORK_IDS.map((id) => ({
+      ...withRecommendedKeywords(buildDefaultCategoryConfig(id)),
+      action: coerceLegacyHashAction(category.action),
+      ...(category.maskToken !== undefined && { maskToken: category.maskToken }),
+      ...(category.keepLast !== undefined && { keepLast: category.keepLast }),
+    }));
+  }
+  const normalized: SensitiveDataCategory = {
+    ...category,
+    action: coerceLegacyHashAction(category.action),
+  };
+  if (requiresKeywordProximity(category.id) && !normalized.keywords?.length) {
+    return [withRecommendedKeywords(normalized)];
+  }
+  return [normalized];
+};
+
 /** Normalize persisted config: legacy `string[]` becomes configured category instances. */
 export const normalizeSensitiveDataCategories = (
   input: string[] | SensitiveDataCategory[]
@@ -556,12 +583,20 @@ export const normalizeSensitiveDataCategories = (
   }
   const first = input[0];
   if (typeof first === 'string') {
-    return (input as string[]).map((id) => buildDefaultCategoryConfig(id));
+    return (input as string[]).flatMap((id) => {
+      if (id === 'date-of-birth') {
+        return [];
+      }
+      if (id === 'credit-card') {
+        return PAYMENT_CARD_NETWORK_IDS.map((networkId) =>
+          withRecommendedKeywords(buildDefaultCategoryConfig(networkId))
+        );
+      }
+      const config = buildDefaultCategoryConfig(id);
+      return requiresKeywordProximity(id) ? [withRecommendedKeywords(config)] : [config];
+    });
   }
-  return (input as SensitiveDataCategory[]).map((category) => ({
-    ...category,
-    action: coerceLegacyHashAction(category.action),
-  }));
+  return (input as SensitiveDataCategory[]).flatMap((category) => expandLegacyCategory(category));
 };
 
 /**

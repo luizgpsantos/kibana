@@ -583,7 +583,7 @@ export const ACTION_METADATA_MAP: Record<ProcessorType, ActionMetadata> = {
     }),
     description: i18n.translate('xpack.streamlang.actionMetadata.sensitiveData.description', {
       defaultMessage:
-        'Detect and redact sensitive data (PII) using a curated catalog of categories such as credit cards, emails, and national IDs.',
+        'Detect and redact sensitive data using a curated catalog of categories such as payment-card networks, emails, and national IDs.',
     }),
     usage: i18n.translate('xpack.streamlang.actionMetadata.sensitiveData.usage', {
       defaultMessage:
@@ -593,12 +593,12 @@ export const ACTION_METADATA_MAP: Record<ProcessorType, ActionMetadata> = {
       {
         description: i18n.translate(
           'xpack.streamlang.actionMetadata.sensitiveData.examples.basic',
-          { defaultMessage: 'Redact dates of birth from the message field' }
+          { defaultMessage: 'Redact email addresses from the message field' }
         ),
         yaml: `- action: sensitive_data
   from: message
   categories:
-    - date-of-birth`,
+    - email`,
       },
     ],
     tips: [
@@ -608,7 +608,7 @@ export const ACTION_METADATA_MAP: Record<ProcessorType, ActionMetadata> = {
       }),
       i18n.translate('xpack.streamlang.actionMetadata.sensitiveData.tips.esql', {
         defaultMessage:
-          'In ES|QL, redaction is structural-only (any checksum confirmation runs on the ingest path).',
+          'In ES|QL, redaction uses structural pattern matching on the selected categories.',
       }),
     ],
   },

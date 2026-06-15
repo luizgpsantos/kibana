@@ -36,10 +36,6 @@ const LIKELY_PATTERNS: Array<{ id: string; test: (text: string) => boolean }> = 
     id: 'us-ssn',
     test: (text) => /(?:ssn|social security)/i.test(text) && /\d{3}[- ]?\d{2}[- ]?\d{4}/.test(text),
   },
-  {
-    id: 'date-of-birth',
-    test: (text) => /(?:dob|date of birth|born on)/i.test(text),
-  },
 ];
 
 const detectLikelyCategoryIds = (

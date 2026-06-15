@@ -6,13 +6,17 @@
  */
 
 import type { SensitiveDataCategory } from '../../../types/processors';
+import {
+  PAYMENT_CARD_KEYWORD_PROXIMITY,
+  PAYMENT_CARD_NETWORK_IDS,
+  paymentCardKeywords,
+} from './payment_card_keywords';
 
 /**
- * Keyword proximity metadata per active catalog detector.
+ * Keyword proximity metadata per catalog detector.
  *
- * Email uses regex-only (no keyword gating needed); credit card and IBAN rely on ingest-time
- * checksum confirmation (Luhn/mod-97) rather than keyword gates. US SSN requires keyword
- * proximity to avoid false positives. Date of birth is keyword-gated (Elastic-catalog-only).
+ * Payment-card networks, IBAN, and US SSN require keyword proximity by default. Email is
+ * pattern-only.
  */
 export interface CategoryKeywordCatalogEntry {
   readonly requiresKeywordProximity: boolean;
@@ -20,16 +24,61 @@ export interface CategoryKeywordCatalogEntry {
   readonly defaultKeywordProximity: number;
 }
 
+const IBAN_KEYWORDS = [
+  'account code',
+  'account number',
+  'accountno#',
+  'accountnumber#',
+  'bank account',
+  'bank acct',
+  'bban',
+  'checking account',
+  'checking acct',
+  'chequing account',
+  'chequing acct',
+  'customer account id',
+  'deposit account',
+  'deposit acct',
+  'iban',
+  'savings account',
+  'savings acct',
+  'sepa',
+] as const;
+
+const PAYMENT_CARD_KEYWORD_ENTRIES: Readonly<Record<string, CategoryKeywordCatalogEntry>> =
+  Object.fromEntries(
+    PAYMENT_CARD_NETWORK_IDS.map((id) => {
+      const networkTokens: Record<string, readonly string[]> = {
+        visa: paymentCardKeywords('electron', 'visa'),
+        mastercard: paymentCardKeywords('mastercard', 'mc'),
+        amex: paymentCardKeywords('american express', 'amex'),
+        discover: paymentCardKeywords('discover'),
+        diners: paymentCardKeywords('diners club', 'mastercard', 'mc'),
+        jcb: paymentCardKeywords('jcb'),
+        maestro: paymentCardKeywords('mastercard', 'mc'),
+      };
+      return [
+        id,
+        {
+          requiresKeywordProximity: true,
+          recommendedKeywords: networkTokens[id] ?? paymentCardKeywords(),
+          defaultKeywordProximity: PAYMENT_CARD_KEYWORD_PROXIMITY,
+        },
+      ];
+    })
+  );
+
 const CATEGORY_KEYWORD_CATALOG: Readonly<Record<string, CategoryKeywordCatalogEntry>> = {
-  'date-of-birth': {
+  ...PAYMENT_CARD_KEYWORD_ENTRIES,
+  iban: {
     requiresKeywordProximity: true,
-    recommendedKeywords: ['date of birth', 'd.o.b.', 'dob', 'birth date', 'born', 'born on'],
-    defaultKeywordProximity: 15,
+    recommendedKeywords: IBAN_KEYWORDS,
+    defaultKeywordProximity: PAYMENT_CARD_KEYWORD_PROXIMITY,
   },
   'us-ssn': {
     requiresKeywordProximity: true,
-    recommendedKeywords: ['social security', 'ssn', 'ssns', 'ss#', 'soc sec', 'tax id'],
-    defaultKeywordProximity: 20,
+    recommendedKeywords: ['social security', 'ssn'],
+    defaultKeywordProximity: PAYMENT_CARD_KEYWORD_PROXIMITY,
   },
 };
 
@@ -77,8 +126,11 @@ export const omitKeywordOverrides = (config: SensitiveDataCategory): SensitiveDa
 /** @deprecated Use omitKeywordOverrides — spread-merge in forms failed to delete keyword fields. */
 export const withoutKeywordOverrides = omitKeywordOverrides;
 
-/** Default instance when adding from the library — keyword toggle starts OFF. */
-export const buildDefaultCategoryConfig = (id: string): SensitiveDataCategory => ({
-  id,
-  action: 'redact',
-});
+/** Default instance when adding from the library — keyword-gated categories include recommended keywords. */
+export const buildDefaultCategoryConfig = (id: string): SensitiveDataCategory => {
+  const base: SensitiveDataCategory = { id, action: 'redact' };
+  if (requiresKeywordProximity(id)) {
+    return withRecommendedKeywords(base);
+  }
+  return base;
+};

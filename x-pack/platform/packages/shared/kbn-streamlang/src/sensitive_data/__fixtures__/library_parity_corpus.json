@@ -1,0 +1,112 @@
+[
+  {
+    "detectorId": "email",
+    "text": "Contact john.doe@example.com today",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "email",
+    "text": "not an email address",
+    "shouldMatch": false
+  },
+  {
+    "detectorId": "visa",
+    "text": "Payment received on card 4111 1111 1111 1111 thanks",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "visa",
+    "text": "4111 1111 1111 1111 with no keyword",
+    "shouldMatch": false
+  },
+  {
+    "detectorId": "visa",
+    "text": "card 4111 1111 1111 1112 was declined",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "mastercard",
+    "text": "processed transaction — card 5436080915602721 approved",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "mastercard",
+    "text": "card 5436 0809 1560 2721 was declined",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "mastercard",
+    "text": "5436080915602721 with no keyword",
+    "shouldMatch": false
+  },
+  {
+    "detectorId": "amex",
+    "text": "payment on card 378282246310005 complete",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "amex",
+    "text": "378282246310005 without keyword",
+    "shouldMatch": false
+  },
+  {
+    "detectorId": "discover",
+    "text": "card 6011111111111117 authorized",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "discover",
+    "text": "6011111111111117 without keyword",
+    "shouldMatch": false
+  },
+  {
+    "detectorId": "discover",
+    "text": "card 6011 5326 4094 4700 authorized",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "diners",
+    "text": "card 30569309025904 approved",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "jcb",
+    "text": "credit card 3530111333300000 charged",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "maestro",
+    "text": "debit card 6304000000000000 ok",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "maestro",
+    "text": "credit 6304 7512 3005 8764 approved",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "jcb",
+    "text": "credit card 3530 1113 3330 0000 charged",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "iban",
+    "text": "customer iban DE89370400440532013000 on file",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "iban",
+    "text": "DE89370400440532013000 without keyword",
+    "shouldMatch": false
+  },
+  {
+    "detectorId": "us-ssn",
+    "text": "employee ssn 666-00-1234 recorded",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "us-ssn",
+    "text": "666-00-1234 without keyword",
+    "shouldMatch": false
+  }
+]

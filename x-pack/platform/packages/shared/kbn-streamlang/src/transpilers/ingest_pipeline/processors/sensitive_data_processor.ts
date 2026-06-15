@@ -6,7 +6,10 @@
  */
 
 import type { IngestProcessorContainer } from '@elastic/elasticsearch/lib/api/types';
-import type { SensitiveDataProcessor } from '../../../../types/processors';
+import {
+  normalizeSensitiveDataCategories,
+  type SensitiveDataProcessor,
+} from '../../../../types/processors';
 import { compileFromCategories } from '../../../sensitive_data/compile';
 
 /** Ingest transpile output — `where` is already renamed to `if`; `customIdentifier` may be `tag`. */
@@ -62,12 +65,15 @@ export const processSensitiveDataProcessor = (
   // Always emit the telemetry flag script: redacted documents get `<namespace>.detected` and
   // `<namespace>.categories`, so users can build dashboards from what the processor masks.
   // `structural_only` opts out of per-candidate checksum confirmation (pattern-only redaction).
-  const { processors, warnings } = compileFromCategories(processor.categories, {
-    field: processor.from,
-    withFlags: true,
-    flagNamespace,
-    structuralOnly: processor.structural_only ?? false,
-  });
+  const { processors, warnings } = compileFromCategories(
+    normalizeSensitiveDataCategories(processor.categories),
+    {
+      field: processor.from,
+      withFlags: true,
+      flagNamespace,
+      structuralOnly: processor.structural_only ?? false,
+    }
+  );
   const compileNote = warnings.length ? warnings.join(' ') : undefined;
   const processorWithMetadata: SensitiveDataIngestProcessor = {
     ...processor,

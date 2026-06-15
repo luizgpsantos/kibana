@@ -91,9 +91,8 @@ describe('SensitiveDataProcessorForm (proposal panel)', () => {
     );
 
     await user.click(screen.getByText('Email address'));
-    const select = screen.getByTestId('sensitiveData-action-email');
-    expect(select).toHaveValue('redact');
-    expect(select.querySelectorAll('option')).toHaveLength(1);
+    expect(screen.queryByTestId('sensitiveData-action-email')).not.toBeInTheDocument();
+    expect(screen.getByText('Full redact')).toBeInTheDocument();
   });
 
   it('does not show proximity keyword fields for email', async () => {
@@ -113,29 +112,29 @@ describe('SensitiveDataProcessorForm (proposal panel)', () => {
     expect(screen.queryByText('Proximity keywords')).not.toBeInTheDocument();
   });
 
-  it('fills recommended keywords on toggle on and can turn toggle off while keeping values', async () => {
+  it('fills recommended keywords on toggle off and back on while keeping values', async () => {
     const user = userEvent.setup();
     render(
       <FormWrapper
         defaultValues={{
           action: 'sensitive_data',
           from: 'message',
-          categories: [{ id: 'date-of-birth', action: 'redact' }],
+          categories: [{ id: 'us-ssn', action: 'redact' }],
         }}
       />
     );
 
-    await user.click(screen.getByText('Date of birth'));
-    const toggle = screen.getByTestId('sensitiveData-use-recommended-date-of-birth');
+    await user.click(screen.getByText('US Social Security Number'));
+    const toggle = screen.getByTestId('sensitiveData-use-recommended-us-ssn');
+    expect(toggle).toBeChecked();
+    expect(screen.getByText('social security')).toBeInTheDocument();
+
+    await user.click(toggle);
     expect(toggle).not.toBeChecked();
+    expect(screen.getByText('social security')).toBeInTheDocument();
 
     await user.click(toggle);
     expect(toggle).toBeChecked();
-    expect(screen.getByText('dob')).toBeInTheDocument();
-
-    await user.click(toggle);
-    expect(toggle).not.toBeChecked();
-    expect(screen.getByText('dob')).toBeInTheDocument();
   });
 
   it('shows manual proximity keywords when saved without recommended toggle', async () => {
@@ -147,9 +146,9 @@ describe('SensitiveDataProcessorForm (proposal panel)', () => {
           from: 'message',
           categories: [
             {
-              id: 'date-of-birth',
+              id: 'us-ssn',
               action: 'redact',
-              keywords: ['patient dob'],
+              keywords: ['employee ssn'],
               keywordProximity: 12,
             },
           ],
@@ -157,10 +156,10 @@ describe('SensitiveDataProcessorForm (proposal panel)', () => {
       />
     );
 
-    await user.click(screen.getByText('Date of birth'));
-    expect(screen.getByTestId('sensitiveData-use-recommended-date-of-birth')).not.toBeChecked();
-    expect(screen.getByText('patient dob')).toBeInTheDocument();
-    expect(screen.getByTestId('sensitiveData-keywords-date-of-birth')).toBeInTheDocument();
+    await user.click(screen.getByText('US Social Security Number'));
+    expect(screen.getByTestId('sensitiveData-use-recommended-us-ssn')).not.toBeChecked();
+    expect(screen.getByText('employee ssn')).toBeInTheDocument();
+    expect(screen.getByTestId('sensitiveData-keywords-us-ssn')).toBeInTheDocument();
   });
 
   it('renders configured category rows when legacy string[] categories are loaded', () => {
@@ -178,7 +177,7 @@ describe('SensitiveDataProcessorForm (proposal panel)', () => {
     );
 
     expect(screen.getByText('Email address')).toBeInTheDocument();
-    expect(screen.getByText('Credit card number')).toBeInTheDocument();
+    expect(screen.getByText('Visa card number')).toBeInTheDocument();
   });
 
   it('renders configured category rows when categories are set', () => {
@@ -189,14 +188,14 @@ describe('SensitiveDataProcessorForm (proposal panel)', () => {
           from: 'message',
           categories: [
             { id: 'email', action: 'redact' },
-            { id: 'credit-card', action: 'redact' },
+            { id: 'visa', action: 'redact' },
           ],
         }}
       />
     );
 
     expect(screen.getByText('Email address')).toBeInTheDocument();
-    expect(screen.getByText('Credit card number')).toBeInTheDocument();
+    expect(screen.getByText('Visa card number')).toBeInTheDocument();
   });
 
   it('opens the category library flyout from Add categories', async () => {

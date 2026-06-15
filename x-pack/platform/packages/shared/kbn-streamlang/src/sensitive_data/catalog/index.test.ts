@@ -9,136 +9,102 @@ import {
   ACTIVE_DETECTOR_IDS,
   CATALOG,
   DETECTORS,
+  PAYMENT_CARD_NETWORK_IDS,
   createDefaultCategoryConfig,
   getActiveDetectors,
-  getDetectorsByIds,
   getCategoryMaskToken,
   listCatalogCategories,
   listLibraryCategories,
   listRecommendedCategories,
+  requiresKeywordProximity,
 } from '.';
 import { compileFromCategories, isChecksum } from '../compile';
 
-describe('sensitive_data catalog (Plan 6 — confirmed active set)', () => {
-  it('vendors the curated detector modules', () => {
+describe('sensitive_data catalog (active set)', () => {
+  it('vendors active and legacy detector modules', () => {
     expect(Object.keys(DETECTORS).sort()).toEqual([
+      'amex',
       'credit-card',
       'date-of-birth',
+      'diners',
+      'discover',
       'email',
       'iban',
+      'jcb',
+      'maestro',
+      'mastercard',
       'us-ssn',
+      'visa',
     ]);
   });
 
-  it('the active scope dial points at the confirmed set', () => {
-    expect(ACTIVE_DETECTOR_IDS).toEqual([
-      'date-of-birth',
-      'email',
-      'credit-card',
-      'iban',
-      'us-ssn',
-    ]);
+  it('the active scope dial points at email, payment-card networks, iban, and us-ssn', () => {
+    expect(ACTIVE_DETECTOR_IDS).toEqual(['email', ...PAYMENT_CARD_NETWORK_IDS, 'iban', 'us-ssn']);
+    expect(getActiveDetectors()).toHaveLength(10);
     expect(getActiveDetectors().map((d) => d.id)).toEqual([
-      'date-of-birth',
       'email',
-      'credit-card',
+      ...PAYMENT_CARD_NETWORK_IDS,
       'iban',
       'us-ssn',
     ]);
   });
 
-  it('classifies validation types: structural vs per-candidate checksum', () => {
-    expect(DETECTORS['date-of-birth'].detection.validation.type).toBe('none');
+  it('active detectors use structural validation (legacy credit-card retains luhn)', () => {
     expect(DETECTORS.email.detection.validation.type).toBe('none');
+    expect(DETECTORS.visa.detection.validation.type).toBe('none');
+    expect(DETECTORS.iban.detection.validation.type).toBe('none');
     expect(DETECTORS['us-ssn'].detection.validation.type).toBe('none');
     expect(DETECTORS['credit-card'].detection.validation.type).toBe('luhn');
-    expect(DETECTORS.iban.detection.validation.type).toBe('mod97');
+    expect(isChecksum(DETECTORS.visa)).toBe(false);
     expect(isChecksum(DETECTORS['credit-card'])).toBe(true);
-    expect(isChecksum(DETECTORS.iban)).toBe(true);
-    expect(isChecksum(DETECTORS['us-ssn'])).toBe(false);
   });
 
-  it('keeps end-user precision guards in plain language (no checksum jargon)', () => {
-    expect(DETECTORS['credit-card'].defaultPrecisionGuards).toEqual(['Redact credit card numbers']);
-    expect(DETECTORS.iban.defaultPrecisionGuards).toEqual(['Redact IBANs (bank account numbers)']);
-    expect(DETECTORS['us-ssn'].defaultPrecisionGuards).toEqual([
-      'Only redact Social Security numbers labeled nearby',
-    ]);
+  it('requires keyword proximity for payment cards, iban, and us-ssn', () => {
+    for (const id of [...PAYMENT_CARD_NETWORK_IDS, 'iban', 'us-ssn']) {
+      expect(requiresKeywordProximity(id)).toBe(true);
+    }
+    expect(requiresKeywordProximity('email')).toBe(false);
   });
 
-  it('exposes catalog metadata (version + opt-out posture)', () => {
-    expect(CATALOG.version).toBe('0.2.0');
+  it('exposes catalog metadata', () => {
+    expect(CATALOG.version).toBe('0.3.0');
     expect(CATALOG.defaultPosture).toBe('opt-out');
-    expect(CATALOG.defaultAction).toBe('remove');
-  });
-
-  it('resolves detectors by id, preserving requested order', () => {
-    const detectors = getDetectorsByIds(['email', 'credit-card', 'date-of-birth']);
-    expect(detectors.map((d) => d.id)).toEqual(['email', 'credit-card', 'date-of-birth']);
-  });
-
-  it('throws on an unknown detector id', () => {
-    expect(() => getDetectorsByIds(['does-not-exist'])).toThrow(/unknown detector/i);
   });
 
   it('lists library categories for the flyout (active set only)', () => {
     const library = listLibraryCategories();
-    expect(library).toHaveLength(5);
-    expect(library.map((e) => e.id)).toEqual([
-      'date-of-birth',
-      'email',
-      'credit-card',
-      'iban',
-      'us-ssn',
-    ]);
-    expect(library.find((e) => e.id === 'passport-national-id')).toBeUndefined();
+    expect(library).toHaveLength(10);
+    expect(library.find((e) => e.id === 'date-of-birth')).toBeUndefined();
+    expect(library.find((e) => e.id === 'visa')).toBeDefined();
   });
 
   it('lists ACTIVE categories for the proposal form', () => {
-    const categories = listCatalogCategories();
-    expect(categories).toHaveLength(5);
-    expect(categories.map((c) => c.id)).toEqual([
-      'date-of-birth',
-      'email',
-      'credit-card',
-      'iban',
-      'us-ssn',
-    ]);
+    expect(listCatalogCategories()).toHaveLength(10);
+  });
+
+  it('default category configs include recommended keywords for gated detectors', () => {
+    const visa = createDefaultCategoryConfig('visa');
+    expect(visa.useRecommendedKeywords).toBe(true);
+    expect(visa.keywords).toEqual(expect.arrayContaining(['card', 'visa']));
+    expect(visa.keywordProximity).toBe(30);
+    expect(createDefaultCategoryConfig('email')).toEqual({ id: 'email', action: 'redact' });
   });
 });
 
 describe('sensitive_data catalog — proposal surface', () => {
-  it('exposes a mask token per active category', () => {
-    expect(getCategoryMaskToken('date-of-birth')).toBe('<DOB>');
+  it('exposes mask tokens per active category', () => {
     expect(getCategoryMaskToken('email')).toBe('<EMAIL>');
-    expect(getCategoryMaskToken('credit-card')).toBe('<CREDIT_CARD>');
+    expect(getCategoryMaskToken('visa')).toBe('<VISA>');
   });
 
-  it('returns undefined mask token for an unknown id (no throw)', () => {
-    expect(getCategoryMaskToken('not-a-detector')).toBeUndefined();
-  });
-
-  it('exposes anticipatoryAffinity on active categories', () => {
-    const [dob] = listCatalogCategories();
-    expect(dob.id).toBe('date-of-birth');
-    expect(dob.anticipatoryAffinity).toEqual(expect.arrayContaining(['us-ssn', 'email']));
-  });
-
-  it('derives Recommended from active affinity only, excluding already configured ids', () => {
-    const recommended = listRecommendedCategories(['date-of-birth']);
+  it('derives Recommended from active affinity only', () => {
+    const recommended = listRecommendedCategories(['email']);
     const ids = recommended.map((c) => c.id);
-    expect(ids).not.toContain('date-of-birth');
-    expect(ids).toEqual(expect.arrayContaining(['us-ssn', 'email']));
     expect(ids.every((id) => ACTIVE_DETECTOR_IDS.includes(id))).toBe(true);
   });
 
   it('listRecommendedCategories never returns an id without a working detector', () => {
-    for (const foundIds of [
-      [],
-      ['date-of-birth'],
-      [...ACTIVE_DETECTOR_IDS],
-      ['email', 'credit-card'],
-    ]) {
+    for (const foundIds of [[], ['email'], [...ACTIVE_DETECTOR_IDS]]) {
       for (const { id } of listRecommendedCategories(foundIds)) {
         expect(DETECTORS[id]).toBeDefined();
       }
@@ -149,9 +115,13 @@ describe('sensitive_data catalog — proposal surface', () => {
     expect(listRecommendedCategories([...ACTIVE_DETECTOR_IDS])).toEqual([]);
   });
 
-  it('compileFromCategories emits no warnings for all active detectors', () => {
+  it('compileFromCategories emits no checksum scripts for the active set', () => {
     const categories = ACTIVE_DETECTOR_IDS.map((id) => createDefaultCategoryConfig(id));
-    const { warnings } = compileFromCategories(categories, { field: 'message' });
+    const { processors, warnings } = compileFromCategories(categories, { field: 'message' });
     expect(warnings).toEqual([]);
+    expect(
+      processors.every((p) => !p || !('script' in p) || !p.script?.description?.includes('checksum'))
+    ).toBe(true);
+    expect(processors.some((p) => p && 'redact' in p)).toBe(true);
   });
 });

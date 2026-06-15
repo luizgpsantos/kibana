@@ -78,6 +78,7 @@ export {
   getDetectorsByIds,
   CATALOG,
   ACTIVE_DETECTOR_IDS,
+  PAYMENT_CARD_NETWORK_IDS,
 } from './src/sensitive_data/catalog';
 export type {
   CatalogCategory,

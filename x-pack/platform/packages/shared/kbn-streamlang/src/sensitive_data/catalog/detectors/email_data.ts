@@ -20,5 +20,5 @@ export const emailDetector = {
   },
   recommendedAction: 'remove',
   defaultPrecisionGuards: ['Redact anything matching a valid email address'],
-  anticipatoryAffinity: ['us-ssn', 'credit-card', 'date-of-birth'],
+  anticipatoryAffinity: ['us-ssn', 'visa', 'mastercard'],
 };

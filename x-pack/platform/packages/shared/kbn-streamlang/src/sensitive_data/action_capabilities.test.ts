@@ -15,8 +15,9 @@ describe('action capabilities', () => {
     expect(getSupportedActionsForCategory('email')).toEqual(['redact']);
   });
 
-  it('allows all actions for checksum and keyword-gated detectors with value capture', () => {
+  it('allows all actions for keyword-gated detectors with value capture', () => {
+    expect(getSupportedActionsForCategory('visa')).toEqual(['redact', 'partial', 'tag']);
+    expect(getSupportedActionsForCategory('us-ssn')).toEqual(['redact', 'partial', 'tag']);
     expect(getSupportedActionsForCategory('credit-card')).toEqual(['redact', 'partial', 'tag']);
-    expect(getSupportedActionsForCategory('date-of-birth')).toEqual(['redact', 'partial', 'tag']);
   });
 });
