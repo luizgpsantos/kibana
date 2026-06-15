@@ -91,6 +91,32 @@ describe('compileCombinedRedact (active structural set)', () => {
 });
 
 describe('compileFromCategories', () => {
+  it('compiles IPv4 detector to a combined redact processor', () => {
+    const { processors } = compileFromCategories([{ id: 'ipv4', action: 'redact' }], {
+      field: 'message',
+    });
+    expect(processors).toHaveLength(1);
+    const first = processors[0];
+    if (!first || !('redact' in first) || !first.redact) {
+      throw new Error('expected combined redact processor');
+    }
+    expect(first.redact.patterns?.some((p) => p.includes('IPV4'))).toBe(true);
+  });
+
+  it('mixed IPv4 and credit-card: structural redact + Luhn confirmer', () => {
+    const { processors } = compileFromCategories(
+      [
+        { id: 'ipv4', action: 'redact' },
+        { id: 'credit-card', action: 'redact' },
+      ],
+      { field: 'message' }
+    );
+    expect(processors.some((p) => p && 'redact' in p)).toBe(true);
+    expect(
+      processors.some((p) => p && 'script' in p && p.script?.description?.match(/Luhn/i))
+    ).toBe(true);
+  });
+
   it('honors partial action on visa with keyword defaults', () => {
     const { processors } = compileFromCategories(
       [{ ...visaRedact, action: 'partial', keepLast: 4 }],

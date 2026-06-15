@@ -9,6 +9,7 @@ import {
   ACTIVE_DETECTOR_IDS,
   CATALOG,
   DETECTORS,
+  NETWORK_DEVICE_IDS,
   PAYMENT_CARD_NETWORK_IDS,
   createDefaultCategoryConfig,
   getActiveDetectors,
@@ -18,7 +19,8 @@ import {
   listRecommendedCategories,
   requiresKeywordProximity,
 } from '.';
-import { compileFromCategories, isChecksum } from '../compile';
+import { compileCombinedRedact, compileFromCategories, isChecksum } from '../compile';
+import { detectorMatchesText } from '../library_parity_match';
 
 describe('sensitive_data catalog (active set)', () => {
   it('vendors active and legacy detector modules', () => {
@@ -30,7 +32,10 @@ describe('sensitive_data catalog (active set)', () => {
       'discover',
       'email',
       'iban',
+      'ipv4',
+      'ipv6',
       'jcb',
+      'mac-address',
       'maestro',
       'mastercard',
       'us-ssn',
@@ -38,14 +43,21 @@ describe('sensitive_data catalog (active set)', () => {
     ]);
   });
 
-  it('the active scope dial points at email, payment-card networks, iban, and us-ssn', () => {
-    expect(ACTIVE_DETECTOR_IDS).toEqual(['email', ...PAYMENT_CARD_NETWORK_IDS, 'iban', 'us-ssn']);
-    expect(getActiveDetectors()).toHaveLength(10);
+  it('the active scope dial points at email, payment-card networks, iban, us-ssn, and network devices', () => {
+    expect(ACTIVE_DETECTOR_IDS).toEqual([
+      'email',
+      ...PAYMENT_CARD_NETWORK_IDS,
+      'iban',
+      'us-ssn',
+      ...NETWORK_DEVICE_IDS,
+    ]);
+    expect(getActiveDetectors()).toHaveLength(13);
     expect(getActiveDetectors().map((d) => d.id)).toEqual([
       'email',
       ...PAYMENT_CARD_NETWORK_IDS,
       'iban',
       'us-ssn',
+      ...NETWORK_DEVICE_IDS,
     ]);
   });
 
@@ -54,8 +66,12 @@ describe('sensitive_data catalog (active set)', () => {
     expect(DETECTORS.visa.detection.validation.type).toBe('none');
     expect(DETECTORS.iban.detection.validation.type).toBe('none');
     expect(DETECTORS['us-ssn'].detection.validation.type).toBe('none');
+    expect(DETECTORS.ipv4.detection.validation.type).toBe('none');
+    expect(DETECTORS.ipv6.detection.validation.type).toBe('none');
+    expect(DETECTORS['mac-address'].detection.validation.type).toBe('none');
     expect(DETECTORS['credit-card'].detection.validation.type).toBe('luhn');
     expect(isChecksum(DETECTORS.visa)).toBe(false);
+    expect(isChecksum(DETECTORS.ipv4)).toBe(false);
     expect(isChecksum(DETECTORS['credit-card'])).toBe(true);
   });
 
@@ -64,22 +80,27 @@ describe('sensitive_data catalog (active set)', () => {
       expect(requiresKeywordProximity(id)).toBe(true);
     }
     expect(requiresKeywordProximity('email')).toBe(false);
+    for (const id of NETWORK_DEVICE_IDS) {
+      expect(requiresKeywordProximity(id)).toBe(false);
+    }
   });
 
   it('exposes catalog metadata', () => {
-    expect(CATALOG.version).toBe('0.3.0');
+    expect(CATALOG.version).toBe('0.4.0');
     expect(CATALOG.defaultPosture).toBe('opt-out');
   });
 
   it('lists library categories for the flyout (active set only)', () => {
     const library = listLibraryCategories();
-    expect(library).toHaveLength(10);
+    expect(library).toHaveLength(13);
     expect(library.find((e) => e.id === 'date-of-birth')).toBeUndefined();
     expect(library.find((e) => e.id === 'visa')).toBeDefined();
+    expect(library.find((e) => e.id === 'ipv4')?.group).toBe('network_device');
+    expect(library.find((e) => e.id === 'mac-address')?.group).toBe('network_device');
   });
 
   it('lists ACTIVE categories for the proposal form', () => {
-    expect(listCatalogCategories()).toHaveLength(10);
+    expect(listCatalogCategories()).toHaveLength(13);
   });
 
   it('default category configs include recommended keywords for gated detectors', () => {
@@ -95,6 +116,8 @@ describe('sensitive_data catalog — proposal surface', () => {
   it('exposes mask tokens per active category', () => {
     expect(getCategoryMaskToken('email')).toBe('<EMAIL>');
     expect(getCategoryMaskToken('visa')).toBe('<VISA>');
+    expect(getCategoryMaskToken('ipv4')).toBe('<IPV4>');
+    expect(getCategoryMaskToken('mac-address')).toBe('<MAC_ADDR>');
   });
 
   it('derives Recommended from active affinity only', () => {
@@ -123,5 +146,33 @@ describe('sensitive_data catalog — proposal surface', () => {
       processors.every((p) => !p || !('script' in p) || !p.script?.description?.includes('checksum'))
     ).toBe(true);
     expect(processors.some((p) => p && 'redact' in p)).toBe(true);
+  });
+});
+
+describe('sensitive_data catalog — network detectors', () => {
+  it('network detectors are in the active set', () => {
+    for (const id of NETWORK_DEVICE_IDS) {
+      expect(ACTIVE_DETECTOR_IDS.includes(id)).toBe(true);
+    }
+  });
+
+  it('IPv4 detector has no checksum', () => {
+    expect(isChecksum(DETECTORS.ipv4)).toBe(false);
+  });
+
+  it('MAC address pattern compiles without grok errors', () => {
+    const { processors } = compileCombinedRedact([DETECTORS['mac-address']], { field: 'message' });
+    const redact = processors[0];
+    if (!redact || !('redact' in redact) || !redact.redact) {
+      throw new Error('expected combined redact processor');
+    }
+    expect(redact.redact.pattern_definitions?.MAC_ADDR).toBeDefined();
+    expect(detectorMatchesText('mac-address', 'client mac aa:bb:cc:dd:ee:ff connected')).toBe(true);
+    expect(detectorMatchesText('mac-address', 'interface eth0:aa:bb:cc:dd:ee:ff up')).toBe(false);
+  });
+
+  it('matches IPv4 and IPv6 in unstructured log text', () => {
+    expect(detectorMatchesText('ipv4', 'request from 192.168.1.42 failed')).toBe(true);
+    expect(detectorMatchesText('ipv6', 'connected via ::1 on loopback')).toBe(true);
   });
 });

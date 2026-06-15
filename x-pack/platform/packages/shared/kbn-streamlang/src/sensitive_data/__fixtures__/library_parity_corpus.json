@@ -108,5 +108,35 @@
     "detectorId": "us-ssn",
     "text": "666-00-1234 without keyword",
     "shouldMatch": false
+  },
+  {
+    "detectorId": "ipv4",
+    "text": "request from 192.168.1.42 failed",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "ipv4",
+    "text": "no network address in this line",
+    "shouldMatch": false
+  },
+  {
+    "detectorId": "ipv6",
+    "text": "connected via ::1 on loopback",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "ipv6",
+    "text": "no network address here",
+    "shouldMatch": false
+  },
+  {
+    "detectorId": "mac-address",
+    "text": "client mac aa:bb:cc:dd:ee:ff connected",
+    "shouldMatch": true
+  },
+  {
+    "detectorId": "mac-address",
+    "text": "interface eth0:aa:bb:cc:dd:ee:ff up",
+    "shouldMatch": false
   }
 ]

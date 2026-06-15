@@ -13,7 +13,10 @@ import { dinersDetector } from './detectors/diners_data';
 import { discoverDetector } from './detectors/discover_data';
 import { emailDetector } from './detectors/email_data';
 import { ibanDetector } from './detectors/iban_data';
+import { ipv4Detector } from './detectors/ipv4_data';
+import { ipv6Detector } from './detectors/ipv6_data';
 import { jcbDetector } from './detectors/jcb_data';
+import { macAddressDetector } from './detectors/mac_address_data';
 import { maestroDetector } from './detectors/maestro_data';
 import { mastercardDetector } from './detectors/mastercard_data';
 import { usSsnDetector } from './detectors/us_ssn_data';
@@ -40,7 +43,10 @@ export {
   paymentCardKeywords,
 } from './payment_card_keywords';
 export type { PaymentCardNetworkId } from './payment_card_keywords';
+export { NETWORK_DEVICE_IDS } from './network_device_ids';
+export type { NetworkDeviceId } from './network_device_ids';
 import { PAYMENT_CARD_NETWORK_IDS } from './payment_card_keywords';
+import { NETWORK_DEVICE_IDS } from './network_device_ids';
 import { maskToken } from '../mask';
 
 /** Default configured instance when adding a category from the library. */
@@ -95,6 +101,9 @@ export const DETECTORS: Readonly<Record<string, Detector>> = {
   maestro: maestroDetector as Detector,
   email: emailDetector as Detector,
   iban: ibanDetector as Detector,
+  ipv4: ipv4Detector as Detector,
+  ipv6: ipv6Detector as Detector,
+  'mac-address': macAddressDetector as Detector,
   'us-ssn': usSsnDetector as Detector,
   /** Legacy generic card id — migrated to payment-card network ids; retained for checksum compile tests. */
   'credit-card': creditCardDetector as Detector,
@@ -111,6 +120,7 @@ export const ACTIVE_DETECTOR_IDS: readonly string[] = [
   ...PAYMENT_CARD_NETWORK_IDS,
   'iban',
   'us-ssn',
+  ...NETWORK_DEVICE_IDS,
 ];
 
 export const getDetectorById = (id: string): Detector | undefined => DETECTORS[id];
@@ -166,6 +176,9 @@ const libraryGroupForDetector = (
   detector: Detector | undefined,
   metaCategories: string[]
 ): LibraryCategoryGroup => {
+  if (metaCategories.includes('Network')) {
+    return 'network_device';
+  }
   if (metaCategories.includes('PCI DSS') || metaCategories.includes('Financial')) {
     return 'payment_banking';
   }

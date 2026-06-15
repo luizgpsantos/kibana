@@ -8,7 +8,7 @@
 /** Vendored from elastic-redact-pii/catalog/catalog.json @ 972ad43 — local knowledge base, not a Kibana build/test dependency. Keep in sync manually. */
 export const catalogIndexData = {
   name: 'Elastic Sensitive Data — detector catalog',
-  version: '0.3.0',
+  version: '0.4.0',
   schema: 'schema/detector.schema.json',
   defaultPosture: 'opt-out',
   defaultAction: 'remove',
@@ -74,6 +74,24 @@ export const catalogIndexData = {
       displayName: 'IBAN (bank account number)',
       categories: ['PII', 'Financial'],
     },
+    {
+      id: 'ipv4',
+      file: 'detectors/ipv4.json',
+      displayName: 'IPv4 address',
+      categories: ['Network', 'PII'],
+    },
+    {
+      id: 'ipv6',
+      file: 'detectors/ipv6.json',
+      displayName: 'IPv6 address',
+      categories: ['Network'],
+    },
+    {
+      id: 'mac-address',
+      file: 'detectors/mac-address.json',
+      displayName: 'MAC address',
+      categories: ['Network'],
+    },
   ],
   deferred: [{ id: 'date-of-birth', file: 'detectors/date-of-birth.json' }],
   affinityVocabulary: [
@@ -87,5 +105,8 @@ export const catalogIndexData = {
     { slug: 'us-ssn', displayName: 'US Social Security Number', detector: 'us-ssn' },
     { slug: 'email', displayName: 'Email address', detector: 'email' },
     { slug: 'iban', displayName: 'IBAN (bank account number)', detector: 'iban' },
+    { slug: 'ipv4', displayName: 'IPv4 address', detector: 'ipv4' },
+    { slug: 'ipv6', displayName: 'IPv6 address', detector: 'ipv6' },
+    { slug: 'mac-address', displayName: 'MAC address', detector: 'mac-address' },
   ],
 } as const;

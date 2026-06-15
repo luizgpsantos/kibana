@@ -9,10 +9,13 @@ import { detectorHasValueCapture, getSupportedActionsForCategory } from './actio
 import { getDetectorsByIds } from './catalog';
 
 describe('action capabilities', () => {
-  it('limits email to full redact (no value capture for tag/partial)', () => {
-    const [email] = getDetectorsByIds(['email']);
+  it('limits email and network detectors to full redact (no value capture for tag/partial)', () => {
+    const [email, ipv4] = getDetectorsByIds(['email', 'ipv4']);
     expect(detectorHasValueCapture(email)).toBe(false);
+    expect(detectorHasValueCapture(ipv4)).toBe(false);
     expect(getSupportedActionsForCategory('email')).toEqual(['redact']);
+    expect(getSupportedActionsForCategory('ipv4')).toEqual(['redact']);
+    expect(getSupportedActionsForCategory('mac-address')).toEqual(['redact', 'partial', 'tag']);
   });
 
   it('allows all actions for keyword-gated detectors with value capture', () => {
