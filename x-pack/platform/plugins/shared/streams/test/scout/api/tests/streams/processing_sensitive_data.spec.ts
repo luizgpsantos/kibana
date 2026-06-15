@@ -12,7 +12,8 @@ import { COMMON_API_HEADERS } from '../../fixtures/constants';
 
 /**
  * Exercises the real `sensitive_data` ingest pipeline against Elasticsearch — the unit tests
- * only assert compiled processor shapes, so this guards runtime semantics in ES.
+ * only assert compiled processor shapes, so this guards runtime semantics in ES (including
+ * Painless script compile for hash/partial/tag actions).
  *
  * `logs.otel` is an OTel stream, so the telemetry flags land under `attributes.sensitive_data.*`.
  */
@@ -82,6 +83,101 @@ apiTest.describe(
 
         expect(withoutKeyword.value['body.text']).toContain('4111 1111 1111 1111');
         expect(withoutKeyword.value['attributes.sensitive_data.detected']).toBeUndefined();
+      }
+    );
+
+    apiTest(
+      'hashes matched Visa numbers with a stable fingerprint when action is hash',
+      async ({ apiClient, samlAuth }) => {
+        const { cookieHeader } = await samlAuth.asStreamsAdmin();
+        const pan = '4111 1111 1111 1111';
+        const expectedFingerprint = 'h:4435f37783144560';
+
+        const { statusCode, body } = await apiClient.post(
+          `internal/streams/${testStream}/processing/_simulate`,
+          {
+            headers: { ...COMMON_API_HEADERS, ...cookieHeader },
+            body: {
+              processing: {
+                steps: [
+                  {
+                    action: 'sensitive_data',
+                    from: 'body.text',
+                    categories: [{ ...visaCategory, action: 'hash' }],
+                  },
+                ],
+              },
+              documents: [
+                {
+                  'body.text': `Payment received on card ${pan} thanks`,
+                  '@timestamp': new Date().toISOString(),
+                },
+                {
+                  'body.text': `${pan} with no keyword nearby`,
+                  '@timestamp': new Date().toISOString(),
+                },
+                {
+                  'body.text': `Duplicate card ${pan} for determinism check`,
+                  '@timestamp': new Date().toISOString(),
+                },
+              ],
+            },
+            responseType: 'json',
+          }
+        );
+
+        expect(statusCode).toBe(200);
+        const [withKeyword, withoutKeyword, duplicate] = body.documents;
+
+        expect(withKeyword.value['body.text']).not.toContain(pan);
+        expect(withKeyword.value['body.text']).toContain(expectedFingerprint);
+        expect(withKeyword.value['attributes.sensitive_data.detected']).toBe(true);
+        expect(withKeyword.value['attributes.sensitive_data.categories']).toContain('visa');
+
+        expect(withoutKeyword.value['body.text']).toContain(pan);
+        expect(withoutKeyword.value['attributes.sensitive_data.detected']).toBeUndefined();
+
+        expect(duplicate.value['body.text']).toContain(expectedFingerprint);
+      }
+    );
+
+    apiTest(
+      'hashes email addresses when action is hash (structural regex fallback)',
+      async ({ apiClient, samlAuth }) => {
+        const { cookieHeader } = await samlAuth.asStreamsAdmin();
+        const email = 'john.doe@example.com';
+        const expectedFingerprint = 'h:0d91078971584543';
+
+        const { statusCode, body } = await apiClient.post(
+          `internal/streams/${testStream}/processing/_simulate`,
+          {
+            headers: { ...COMMON_API_HEADERS, ...cookieHeader },
+            body: {
+              processing: {
+                steps: [
+                  {
+                    action: 'sensitive_data',
+                    from: 'body.text',
+                    categories: [{ id: 'email', action: 'hash' }],
+                  },
+                ],
+              },
+              documents: [
+                {
+                  'body.text': `Contact the user at ${email} for follow-up`,
+                  '@timestamp': new Date().toISOString(),
+                },
+              ],
+            },
+            responseType: 'json',
+          }
+        );
+
+        expect(statusCode).toBe(200);
+        const [emailDoc] = body.documents;
+        expect(emailDoc.value['body.text']).not.toContain(email);
+        expect(emailDoc.value['body.text']).toContain(expectedFingerprint);
+        expect(emailDoc.value['attributes.sensitive_data.categories']).toContain('email');
       }
     );
 
