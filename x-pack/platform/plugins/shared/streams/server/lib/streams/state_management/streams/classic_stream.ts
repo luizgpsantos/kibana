@@ -34,6 +34,7 @@ import { validateClassicFields, validateSimulation } from '../../helpers/validat
 import { validateBracketsInFieldNames } from '../../helpers/validate_stream';
 import { generateClassicIngestPipelineBody } from '../../ingest_pipelines/generate_ingest_pipeline';
 import { getProcessingPipelineName } from '../../ingest_pipelines/name';
+import { applySensitiveDataTelemetryFields } from '../../ingest_pipelines/sensitive_data_telemetry_fields';
 import { getDataStreamSettings, getUnmanagedElasticsearchAssets } from '../../stream_crud';
 import type { ElasticsearchAction } from '../execution_plan/types';
 import type { State } from '../state';
@@ -141,7 +142,7 @@ export class ClassicStream extends StreamActiveRecord<Streams.ClassicStream.Defi
       throw new StatusError('Cannot change stream types', 400);
     }
 
-    this._definition = definition;
+    this._definition = applySensitiveDataTelemetryFields(definition);
 
     const startingStateStreamDefinition = startingState.get(this._definition.name)?.definition;
 
@@ -498,11 +499,9 @@ export class ClassicStream extends StreamActiveRecord<Streams.ClassicStream.Defi
     }
 
     const actions: ElasticsearchAction[] = [];
-    if (this._changes.processing && this._definition.ingest.processing.steps.length > 0) {
+    if (this._definition.ingest.processing.steps.length > 0) {
       actions.push(...(await this.createUpsertPipelineActions()));
-    }
-
-    if (this._changes.processing && this._definition.ingest.processing.steps.length === 0) {
+    } else if (this._changes.processing) {
       const streamManagedPipelineName = getProcessingPipelineName(this._definition.name);
       actions.push({
         type: 'delete_ingest_pipeline',

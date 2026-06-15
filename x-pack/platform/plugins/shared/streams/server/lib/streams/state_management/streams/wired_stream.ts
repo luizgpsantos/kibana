@@ -56,6 +56,7 @@ import {
 import { generateIndexTemplate } from '../../index_templates/generate_index_template';
 import { getIndexTemplateName } from '../../index_templates/name';
 import { generateIngestPipeline } from '../../ingest_pipelines/generate_ingest_pipeline';
+import { applySensitiveDataTelemetryFields } from '../../ingest_pipelines/sensitive_data_telemetry_fields';
 import { generateReroutePipeline } from '../../ingest_pipelines/generate_reroute_pipeline';
 import { getProcessingPipelineName, getReroutePipelineName } from '../../ingest_pipelines/name';
 import type { ElasticsearchAction } from '../execution_plan/types';
@@ -129,7 +130,7 @@ export class WiredStream extends StreamActiveRecord<Streams.WiredStream.Definiti
       throw new StatusError('Cannot change stream types', 400);
     }
 
-    this._definition = definition;
+    this._definition = applySensitiveDataTelemetryFields(definition);
 
     const startingStateStreamDefinition = startingState.get(this._definition.name)?.definition;
 
@@ -1010,7 +1011,7 @@ export class WiredStream extends StreamActiveRecord<Streams.WiredStream.Definiti
         });
       }
     }
-    if (this._changes.processing) {
+    if (this._definition.ingest.processing.steps.length > 0) {
       actions.push({
         type: 'upsert_ingest_pipeline',
         stream: this._definition.name,
