@@ -12,6 +12,11 @@ import { normalizeCategoryActionForCompile } from './action_capabilities';
 import type { Detector } from './catalog';
 import { getDetectorById, getDefaultKeywordProximity, requiresKeywordProximity } from './catalog';
 import { confirmCandidateRegex } from './confirm_candidate_regex';
+import { hashCandidateRegex, painlessAssignFingerprint } from './hash_fingerprint';
+import {
+  detectorForScriptRegex,
+  painlessKeywordProximityGuard,
+} from './keyword_proximity_painless';
 import { captureName, maskToken } from './mask';
 
 export { confirmCandidateRegex } from './confirm_candidate_regex';
@@ -249,14 +254,22 @@ const flagScriptFromEntries = (
   ];
   for (const entry of entries) {
     const { detector, config } = entry;
-    if (config.action === 'partial') {
+    if (config.action === 'partial' || config.action === 'hash') {
       continue;
     }
     if (config.action === 'tag') {
-      const regex = confirmCandidateRegex(detector);
-      lines.push(
-        `{ def tm = /${regex}/.matcher(f); if (tm.find() && !cats.contains('${detector.id}')) { cats.add('${detector.id}'); } }`
-      );
+      const scriptDetector = detectorForScriptRegex(detector, config);
+      const regex = confirmCandidateRegex(scriptDetector);
+      const keywordGuard = painlessKeywordProximityGuard(config, 'f', 'gs');
+      if (keywordGuard) {
+        lines.push(
+          `{ def tm = /${regex}/.matcher(f); if (tm.find()) { int gs = tm.start(1); ${keywordGuard} if (kwOk && !cats.contains('${detector.id}')) { cats.add('${detector.id}'); } } }`
+        );
+      } else {
+        lines.push(
+          `{ def tm = /${regex}/.matcher(f); if (tm.find() && !cats.contains('${detector.id}')) { cats.add('${detector.id}'); } }`
+        );
+      }
       continue;
     }
     if (config.action === 'redact' && isChecksum(detector)) {
@@ -381,7 +394,10 @@ const partialRedactScript = (
   field: string,
   flagReport?: FlagReportOptions
 ): IngestProcessorContainer => {
-  const regex = confirmCandidateRegex(entry.detector);
+  const scriptDetector = detectorForScriptRegex(entry.detector, entry.config);
+  const regex = confirmCandidateRegex(scriptDetector);
+  const keywordGuard =
+    painlessKeywordProximityGuard(entry.config, 'text', 'gs') ?? 'boolean kwOk = true;';
   const keepLast = entry.config.keepLast ?? 4;
   const maskPrefix = painlessSingleQuoted(entry.config.maskToken ?? '****');
   const checksumPart = isChecksum(entry.detector)
@@ -404,10 +420,11 @@ const partialRedactScript = (
     `while (m.find()) {`,
     `  String cand = m.group(1); int gs = m.start(1); int ge = m.end(1);`,
     `  ${checksumPart}`,
+    `  ${keywordGuard}`,
     `  out += text.substring(last, gs);`,
     `  String repl;`,
     `  if (cand.length() <= ${keepLast}) { repl = cand; } else { repl = '${maskPrefix}' + cand.substring(cand.length() - ${keepLast}); }`,
-    `  if (ok) { out += repl; any = true; } else { out += text.substring(gs, ge); }`,
+    `  if (ok && kwOk) { out += repl; any = true; } else { out += text.substring(gs, ge); }`,
     `  last = ge;`,
     `}`,
     `if (any) {`,
@@ -423,8 +440,55 @@ const partialRedactScript = (
   } as IngestProcessorContainer;
 };
 
-/**
- * Rewrite the default structural mask tokens (e.g. `<EMAIL>`) to per-category custom tokens. The
+const hashScript = (
+  entry: CategoryCompileEntry,
+  field: string,
+  flagReport?: FlagReportOptions
+): IngestProcessorContainer => {
+  const scriptDetector = detectorForScriptRegex(entry.detector, entry.config);
+  const regex = hashCandidateRegex(scriptDetector);
+  const keywordGuard =
+    painlessKeywordProximityGuard(entry.config, 'text', 'gs') ?? 'boolean kwOk = true;';
+  const checksumPart = isChecksum(entry.detector)
+    ? checksumBody(entry.detector.detection.validation.type)
+    : 'boolean ok = true;';
+  const reportOnAny =
+    flagReport?.withFlags === true
+      ? [
+          `  out += text.substring(last);`,
+          `  ${painlessFieldAssignment(field)} = out;`,
+          mergeSensitiveCategoryReport(entry.detector.id, flagReport.flagNamespace),
+        ]
+      : [`  out += text.substring(last); ${painlessFieldAssignment(field)} = out;`];
+  const source = [
+    `def value = ${painlessFieldAccessor(field)};`,
+    `if (!(value instanceof String)) { return; }`,
+    `String text = (String) value;`,
+    `def m = /${regex}/.matcher(text);`,
+    `String out = ''; int last = 0; boolean any = false;`,
+    `while (m.find()) {`,
+    `  String cand = m.group(1); int gs = m.start(1); int ge = m.end(1);`,
+    `  ${checksumPart}`,
+    `  ${keywordGuard}`,
+    `  out += text.substring(last, gs);`,
+    `  ${painlessAssignFingerprint('cand', 'repl')}`,
+    `  if (ok && kwOk) { out += repl; any = true; } else { out += text.substring(gs, ge); }`,
+    `  last = ge;`,
+    `}`,
+    `if (any) {`,
+    ...reportOnAny,
+    `}`,
+  ].join('\n');
+  return {
+    script: {
+      lang: 'painless',
+      description: `Hash ${entry.detector.displayName} matches (FNV-1a 64-bit fingerprint)`,
+      source,
+    },
+  } as IngestProcessorContainer;
+};
+
+/** (e.g. `<EMAIL>`) to per-category custom tokens. The
  * native combined `redact` processor always emits `<CAPTURE_NAME>`, so custom tokens for structural
  * (non-checksum) detectors are applied here. Runs AFTER the telemetry flag script (which detects
  * structural redactions by their default token) and uses a literal `String.replace` (no regex), so
@@ -479,13 +543,13 @@ export const compileFromCategories = (
     // partial entries require a per-candidate Painless script that structural_only explicitly avoids;
     // promote them to full structural redact so the data is still protected.
     const partialIds = entries
-      .filter((e) => e.config.action === 'partial')
+      .filter((e) => e.config.action === 'partial' || e.config.action === 'hash')
       .map((e) => e.detector.id);
     if (partialIds.length) {
       warnings.push(
         `Categories [${partialIds.join(
           ', '
-        )}] partial action promoted to full redact in structural_only mode (per-candidate scripts unavailable).`
+        )}] hash/partial action promoted to full redact in structural_only mode (per-candidate scripts unavailable).`
       );
     }
     const redactableDetectors = entries
@@ -502,6 +566,7 @@ export const compileFromCategories = (
 
   const redactEntries = entries.filter((e) => e.config.action === 'redact');
   const partialEntries = entries.filter((e) => e.config.action === 'partial');
+  const hashEntries = entries.filter((e) => e.config.action === 'hash');
 
   const processors: IngestProcessorContainer[] = [];
 
@@ -535,6 +600,10 @@ export const compileFromCategories = (
 
   for (const entry of partialEntries) {
     processors.push(partialRedactScript(entry, field, flagReport));
+  }
+
+  for (const entry of hashEntries) {
+    processors.push(hashScript(entry, field, flagReport));
   }
 
   if (withFlags) {

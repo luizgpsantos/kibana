@@ -42,11 +42,11 @@ describe('normalizeSensitiveDataCategories', () => {
     });
   });
 
-  it('coerces legacy hash action to redact when expanding credit-card', () => {
+  it('preserves hash action when expanding credit-card', () => {
     const expanded = normalizeSensitiveDataCategories([
       { id: 'credit-card', action: 'hash' },
     ] as unknown as SensitiveDataCategory[]);
-    expect(expanded.every((c) => c.action === 'redact')).toBe(true);
+    expect(expanded.every((c) => c.action === 'hash')).toBe(true);
   });
 
   it('passes through configured category objects', () => {
@@ -118,6 +118,15 @@ describe('sensitiveDataProcessorSchema', () => {
       action: 'partial',
       keepLast: 4,
     });
+  });
+
+  it('accepts hash action on a category', () => {
+    const parsed = sensitiveDataProcessorSchema.parse({
+      action: 'sensitive_data',
+      from: 'message',
+      categories: [{ id: 'credit-card', action: 'hash' }],
+    });
+    expect(parsed.categories[0].action).toBe('hash');
   });
 
   it('isSensitiveDataProcessorDefinition narrows sensitive_data steps', () => {

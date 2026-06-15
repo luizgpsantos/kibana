@@ -9,18 +9,28 @@ import { detectorHasValueCapture, getSupportedActionsForCategory } from './actio
 import { getDetectorsByIds } from './catalog';
 
 describe('action capabilities', () => {
-  it('limits email and network detectors to full redact (no value capture for tag/partial)', () => {
+  it('limits email and network detectors to redact and hash (no value capture for tag/partial)', () => {
     const [email, ipv4] = getDetectorsByIds(['email', 'ipv4']);
     expect(detectorHasValueCapture(email)).toBe(false);
     expect(detectorHasValueCapture(ipv4)).toBe(false);
-    expect(getSupportedActionsForCategory('email')).toEqual(['redact']);
-    expect(getSupportedActionsForCategory('ipv4')).toEqual(['redact']);
-    expect(getSupportedActionsForCategory('mac-address')).toEqual(['redact', 'partial', 'tag']);
+    expect(getSupportedActionsForCategory('email')).toEqual(['redact', 'hash']);
+    expect(getSupportedActionsForCategory('ipv4')).toEqual(['redact', 'hash']);
+    expect(getSupportedActionsForCategory('mac-address')).toEqual([
+      'redact',
+      'hash',
+      'partial',
+      'tag',
+    ]);
   });
 
-  it('allows all actions for keyword-gated detectors with value capture', () => {
-    expect(getSupportedActionsForCategory('visa')).toEqual(['redact', 'partial', 'tag']);
-    expect(getSupportedActionsForCategory('us-ssn')).toEqual(['redact', 'partial', 'tag']);
-    expect(getSupportedActionsForCategory('credit-card')).toEqual(['redact', 'partial', 'tag']);
+  it('allows hash plus partial/tag for keyword-gated detectors with value capture', () => {
+    expect(getSupportedActionsForCategory('visa')).toEqual(['redact', 'hash', 'partial', 'tag']);
+    expect(getSupportedActionsForCategory('us-ssn')).toEqual(['redact', 'hash', 'partial', 'tag']);
+    expect(getSupportedActionsForCategory('credit-card')).toEqual([
+      'redact',
+      'hash',
+      'partial',
+      'tag',
+    ]);
   });
 });

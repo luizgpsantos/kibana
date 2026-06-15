@@ -94,7 +94,9 @@ export {
   compileFromCategories,
   confirmCandidateRegex,
   isChecksum,
+  DEFAULT_FLAG_NAMESPACE,
 } from './src/sensitive_data/compile';
+export { flattenSteps } from './src/transpilers/shared/flatten_steps';
 export {
   detectorHasValueCapture,
   detectorSupportsAction,

@@ -499,7 +499,7 @@ export const redactProcessorSchema = processorBaseWithWhereSchema
   ) satisfies z.Schema<RedactProcessor>;
 
 /** How a configured sensitive-data category mutates or records matches. */
-export type SensitiveDataCategoryAction = 'redact' | 'partial' | 'tag';
+export type SensitiveDataCategoryAction = 'redact' | 'partial' | 'tag' | 'hash';
 
 /**
  * One catalog detector configured for this processor step (action, mask token, keywords, etc.).
@@ -515,10 +515,7 @@ export interface SensitiveDataCategory {
   useRecommendedKeywords?: boolean;
 }
 
-export const sensitiveDataCategoryActionSchema = z.preprocess(
-  (val) => (val === 'hash' ? 'redact' : val),
-  z.enum(['redact', 'partial', 'tag'])
-);
+export const sensitiveDataCategoryActionSchema = z.enum(['redact', 'partial', 'tag', 'hash']);
 
 export const sensitiveDataCategorySchema = z
   .object({
@@ -548,10 +545,6 @@ export const sensitiveDataCategorySchema = z
     'Configured sensitive-data category instance'
   ) satisfies z.Schema<SensitiveDataCategory>;
 
-/** Legacy persisted `hash` actions upgrade to `redact` (MessageDigest is not Painless-allowlisted). */
-const coerceLegacyHashAction = (action: SensitiveDataCategoryAction): SensitiveDataCategoryAction =>
-  (action as string) === 'hash' ? 'redact' : action;
-
 const expandLegacyCategory = (category: SensitiveDataCategory): SensitiveDataCategory[] => {
   if (category.id === 'date-of-birth') {
     return [];
@@ -559,14 +552,13 @@ const expandLegacyCategory = (category: SensitiveDataCategory): SensitiveDataCat
   if (category.id === 'credit-card') {
     return PAYMENT_CARD_NETWORK_IDS.map((id) => ({
       ...withRecommendedKeywords(buildDefaultCategoryConfig(id)),
-      action: coerceLegacyHashAction(category.action),
+      action: category.action,
       ...(category.maskToken !== undefined && { maskToken: category.maskToken }),
       ...(category.keepLast !== undefined && { keepLast: category.keepLast }),
     }));
   }
   const normalized: SensitiveDataCategory = {
     ...category,
-    action: coerceLegacyHashAction(category.action),
   };
   if (requiresKeywordProximity(category.id) && !normalized.keywords?.length) {
     return [withRecommendedKeywords(normalized)];

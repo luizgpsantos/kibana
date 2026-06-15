@@ -34,6 +34,16 @@ describe('convertSensitiveDataProcessorToESQL', () => {
     expect(serialized).toContain('VISA');
   });
 
+  it('emits redact EVAL commands for hash categories (preview degradation)', () => {
+    const commands = convertSensitiveDataProcessorToESQL({
+      action: 'sensitive_data',
+      from: 'message',
+      categories: [{ id: 'email', action: 'hash' }],
+    });
+    expect(commands.length).toBeGreaterThanOrEqual(1);
+    expect(commands[0].name).toBe('eval');
+  });
+
   it('returns no ES|QL commands for tag-only categories', () => {
     const commands = convertSensitiveDataProcessorToESQL({
       action: 'sensitive_data',

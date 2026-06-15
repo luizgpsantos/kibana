@@ -13,10 +13,10 @@ import { convertRedactProcessorToESQL } from './redact';
 
 /**
  * ES|QL is a STRUCTURAL-ONLY degradation of sensitive_data: per-candidate checksum
- * confirmation (Luhn/mod-97 Painless) has no ES|QL equivalent. Partial redact and custom
- * mask tokens are ingest-only. Tag-only categories are skipped (no structural redact, no
- * telemetry in ES|QL). ES|QL emits a combined structural redact over redact/partial
- * category patterns (keyword overrides are honored).
+ * confirmation (Luhn/mod-97 Painless) and hash fingerprints have no ES|QL equivalent.
+ * Partial redact and custom mask tokens are ingest-only. Tag-only categories are skipped.
+ * ES|QL emits a combined structural redact over redact/partial/hash category patterns
+ * (hash previews as redact; ingest applies FNV-1a fingerprints).
  */
 export const convertSensitiveDataProcessorToESQL = (
   processor: SensitiveDataProcessor

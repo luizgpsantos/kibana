@@ -32,7 +32,7 @@ export const getSupportedActionsForCategory = (
   if (!detector) {
     return ['redact'];
   }
-  const supported: SensitiveDataCategoryAction[] = ['redact'];
+  const supported: SensitiveDataCategoryAction[] = ['redact', 'hash'];
   if (detectorHasValueCapture(detector)) {
     supported.push('partial', 'tag');
   }
@@ -44,12 +44,6 @@ export const normalizeCategoryActionForCompile = (
   config: SensitiveDataCategory,
   detector: Detector
 ): { config: SensitiveDataCategory; warning?: string } => {
-  if ((config.action as string) === 'hash') {
-    return {
-      config: { ...config, action: 'redact' },
-      warning: `Category "${config.id}": action "hash" is no longer supported; using full redact.`,
-    };
-  }
   if (detectorSupportsAction(detector, config.action)) {
     return { config };
   }

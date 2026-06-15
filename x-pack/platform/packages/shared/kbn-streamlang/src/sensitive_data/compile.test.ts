@@ -117,6 +117,21 @@ describe('compileFromCategories', () => {
     ).toBe(true);
   });
 
+  it('reports telemetry from hash script when withFlags is set', () => {
+    const { processors } = compileFromCategories([{ id: 'credit-card', action: 'hash' }], {
+      field: 'message',
+      withFlags: true,
+    });
+    const hashProcessor = processors.find(
+      (p) =>
+        p &&
+        'script' in p &&
+        (p as { script: { description?: string } }).script.description?.includes('FNV-1a')
+    );
+    const source = scriptSource(hashProcessor);
+    expect(source).toContain("'credit-card'");
+  });
+
   it('honors partial action on visa with keyword defaults', () => {
     const { processors } = compileFromCategories(
       [{ ...visaRedact, action: 'partial', keepLast: 4 }],
@@ -236,6 +251,16 @@ describe('compileFromCategories', () => {
     expect(processors).toHaveLength(1);
     expect(processors[0] && 'redact' in processors[0]).toBe(true);
     expect(warnings.some((w) => w.includes('partial') && w.includes('visa'))).toBe(true);
+  });
+
+  it('structuralOnly promotes hash entries to full redact and emits a warning', () => {
+    const { processors, warnings } = compileFromCategories(
+      [{ id: 'credit-card', action: 'hash' }],
+      { field: 'message', structuralOnly: true }
+    );
+    expect(processors).toHaveLength(1);
+    expect(processors[0] && 'redact' in processors[0]).toBe(true);
+    expect(warnings.some((w) => w.includes('hash') && w.includes('credit-card'))).toBe(true);
   });
 
   it('escapes single quotes in a custom maskToken for legacy credit-card confirm script', () => {

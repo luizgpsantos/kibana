@@ -154,7 +154,7 @@ export interface RecommendedCategory {
   displayName: string;
 }
 
-/** Library browser grouping (aligned with common SDS-style category filters). */
+/** Library browser grouping for category filters in the UI. */
 export type LibraryCategoryGroup =
   | 'pii'
   | 'payment_banking'

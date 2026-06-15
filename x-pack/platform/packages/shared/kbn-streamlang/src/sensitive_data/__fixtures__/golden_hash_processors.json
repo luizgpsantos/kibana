@@ -1,0 +1,38 @@
+{
+  "visa_hash": {
+    "processors": [
+      {
+        "script": {
+          "lang": "painless",
+          "description": "Hash Visa card number matches (FNV-1a 64-bit fingerprint)",
+          "source": "def value = $('message', null);\nif (!(value instanceof String)) { return; }\nString text = (String) value;\ndef m = /((?<![0-9])4[ .-]?(?:[0-9][ .-]?){11,17}[0-9](?![0-9]))/.matcher(text);\nString out = ''; int last = 0; boolean any = false;\nwhile (m.find()) {\n  String cand = m.group(1); int gs = m.start(1); int ge = m.end(1);\n  boolean ok = true;\n  int __kwStart = gs - 44;\nif (__kwStart < 0) { __kwStart = 0; }\nString __kwWin = text.substring(__kwStart, gs).toLowerCase();\nboolean kwOk = __kwWin.indexOf('account number') >= 0 || __kwWin.indexOf('card') >= 0 || __kwWin.indexOf('cc #') >= 0 || __kwWin.indexOf('ccn') >= 0 || __kwWin.indexOf('credit') >= 0 || __kwWin.indexOf('dankort') >= 0 || __kwWin.indexOf('debit') >= 0 || __kwWin.indexOf('pan') >= 0 || __kwWin.indexOf('pcn') >= 0 || __kwWin.indexOf('union pay') >= 0 || __kwWin.indexOf('electron') >= 0 || __kwWin.indexOf('visa') >= 0;\n  out += text.substring(last, gs);\n  long __h = -3750763034362895579L;\nlong __p = 1099511628211L;\nfor (int __i = 0; __i < cand.length(); __i++) {\n  __h ^= (long)cand.charAt(__i);\n  __h *= __p;\n}\nString __hex = '';\nfor (int __i = 15; __i >= 0; __i--) {\n  int __n = (int)((__h >>> (__i * 4)) & 15);\n  __hex += \"0123456789abcdef\".charAt(__n);\n}\nString repl = 'h:' + __hex;\n  if (ok && kwOk) { out += repl; any = true; } else { out += text.substring(gs, ge); }\n  last = ge;\n}\nif (any) {\n  out += text.substring(last); ctx['message'] = out;\n}"
+        }
+      }
+    ],
+    "warnings": []
+  },
+  "credit_card_hash": {
+    "processors": [
+      {
+        "script": {
+          "lang": "painless",
+          "description": "Hash Credit card number matches (FNV-1a 64-bit fingerprint)",
+          "source": "def value = $('message', null);\nif (!(value instanceof String)) { return; }\nString text = (String) value;\ndef m = /((?<![0-9])(?:[0-9][ .-]?){12,18}[0-9](?![0-9]))/.matcher(text);\nString out = ''; int last = 0; boolean any = false;\nwhile (m.find()) {\n  String cand = m.group(1); int gs = m.start(1); int ge = m.end(1);\n  int sum = 0; boolean alt = false; int cnt = 0; int first = -1; boolean multi = false; for (int i = cand.length() - 1; i >= 0; i--) { char c = cand.charAt(i); if (c < (char)'0' || c > (char)'9') { continue; } int raw = c - (char)'0'; if (first < 0) { first = raw; } else if (raw != first) { multi = true; } int d = raw; cnt++; if (alt) { d *= 2; if (d > 9) { d -= 9; } } sum += d; alt = !alt; } boolean ok = (cnt > 0 && multi && sum % 10 == 0);\n  boolean kwOk = true;\n  out += text.substring(last, gs);\n  long __h = -3750763034362895579L;\nlong __p = 1099511628211L;\nfor (int __i = 0; __i < cand.length(); __i++) {\n  __h ^= (long)cand.charAt(__i);\n  __h *= __p;\n}\nString __hex = '';\nfor (int __i = 15; __i >= 0; __i--) {\n  int __n = (int)((__h >>> (__i * 4)) & 15);\n  __hex += \"0123456789abcdef\".charAt(__n);\n}\nString repl = 'h:' + __hex;\n  if (ok && kwOk) { out += repl; any = true; } else { out += text.substring(gs, ge); }\n  last = ge;\n}\nif (any) {\n  out += text.substring(last); ctx['message'] = out;\n}"
+        }
+      }
+    ],
+    "warnings": []
+  },
+  "email_hash": {
+    "processors": [
+      {
+        "script": {
+          "lang": "painless",
+          "description": "Hash Email address matches (FNV-1a 64-bit fingerprint)",
+          "source": "def value = $('message', null);\nif (!(value instanceof String)) { return; }\nString text = (String) value;\ndef m = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})/.matcher(text);\nString out = ''; int last = 0; boolean any = false;\nwhile (m.find()) {\n  String cand = m.group(1); int gs = m.start(1); int ge = m.end(1);\n  boolean ok = true;\n  boolean kwOk = true;\n  out += text.substring(last, gs);\n  long __h = -3750763034362895579L;\nlong __p = 1099511628211L;\nfor (int __i = 0; __i < cand.length(); __i++) {\n  __h ^= (long)cand.charAt(__i);\n  __h *= __p;\n}\nString __hex = '';\nfor (int __i = 15; __i >= 0; __i--) {\n  int __n = (int)((__h >>> (__i * 4)) & 15);\n  __hex += \"0123456789abcdef\".charAt(__n);\n}\nString repl = 'h:' + __hex;\n  if (ok && kwOk) { out += repl; any = true; } else { out += text.substring(gs, ge); }\n  last = ge;\n}\nif (any) {\n  out += text.substring(last); ctx['message'] = out;\n}"
+        }
+      }
+    ],
+    "warnings": []
+  }
+}
