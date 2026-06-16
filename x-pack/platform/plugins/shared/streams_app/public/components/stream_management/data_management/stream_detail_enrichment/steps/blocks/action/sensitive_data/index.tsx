@@ -13,6 +13,7 @@ import { CategoryLibraryFlyout } from './category_library_flyout';
 import { ConfiguredCategories } from './configured_categories';
 import { RecommendedCategories } from './recommended_categories';
 import { SensitiveDataLicenseCallout } from './license_callout';
+import { SimulationFidelityCallout } from './simulation_fidelity_callout';
 import { useNormalizedCategoriesField } from './use_normalized_categories';
 import { useSensitiveDataLicense } from './use_sensitive_data_license';
 
@@ -37,6 +38,8 @@ export const SensitiveDataProcessorForm = () => {
       <EuiSpacer size="m" />
 
       {!isLicenseLoading && !hasRequiredLicense && <SensitiveDataLicenseCallout />}
+
+      <SimulationFidelityCallout categories={categories} />
 
       <ConfiguredCategories onAddCategories={() => setIsLibraryOpen(true)} />
       <EuiSpacer size="m" />
