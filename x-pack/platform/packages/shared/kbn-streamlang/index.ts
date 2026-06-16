@@ -96,6 +96,12 @@ export {
   isChecksum,
   DEFAULT_FLAG_NAMESPACE,
 } from './src/sensitive_data/compile';
+export {
+  collectSensitiveDataEsqlPreviewNotes,
+  formatSensitiveDataEsqlPreviewNote,
+  sensitiveDataEsqlPreviewWarnings,
+  type SensitiveDataEsqlPreviewNote,
+} from './src/sensitive_data/esql_preview_notes';
 export { flattenSteps } from './src/transpilers/shared/flatten_steps';
 export {
   detectorHasValueCapture,
