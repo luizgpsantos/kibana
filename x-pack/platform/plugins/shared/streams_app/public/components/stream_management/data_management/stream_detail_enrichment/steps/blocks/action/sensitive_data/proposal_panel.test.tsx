@@ -78,7 +78,7 @@ describe('SensitiveDataProcessorForm (proposal panel)', () => {
     expect(screen.queryByText('Sensitive data categories')).not.toBeInTheDocument();
   });
 
-  it('offers only full redact action for email', async () => {
+  it('shows action selector when email supports multiple actions', async () => {
     const user = userEvent.setup();
     render(
       <FormWrapper
@@ -91,8 +91,9 @@ describe('SensitiveDataProcessorForm (proposal panel)', () => {
     );
 
     await user.click(screen.getByText('Email address'));
-    expect(screen.queryByTestId('sensitiveData-action-email')).not.toBeInTheDocument();
-    expect(screen.getByText('Full redact')).toBeInTheDocument();
+    const actionSelect = screen.getByTestId('sensitiveData-action-email');
+    expect(actionSelect).toBeInTheDocument();
+    expect(actionSelect).toHaveValue('redact');
   });
 
   it('does not show proximity keyword fields for email', async () => {
