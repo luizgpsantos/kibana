@@ -55,7 +55,7 @@ const collectSensitiveDataSteps = (
  * checksum confirmer (i.e. a checksum detector that is not running in `structural_only` mode).
  */
 const categoryUsesPainlessRegex = (category: SensitiveDataCategory): boolean => {
-  if (category.action === 'partial' || category.action === 'tag') {
+  if (category.action === 'partial' || category.action === 'tag' || category.action === 'hash') {
     return true;
   }
   const detector = getDetectorById(category.id);
@@ -88,7 +88,7 @@ export const isPainlessRegexDisabled = async (esClient: ElasticsearchClient): Pr
 };
 
 export const PAINLESS_REGEX_DISABLED_MESSAGE =
-  'This processor configuration requires Painless regular expressions, which are disabled on this cluster (script.painless.regex.enabled is set to "false"). Partial-redact and tag actions emit Painless regex scripts. Enable the setting, switch to structural_only mode, or use only full-redact (action: "redact") to continue without regex scripts.';
+  'This processor configuration requires Painless regular expressions, which are disabled on this cluster (script.painless.regex.enabled is set to "false"). Hash, partial-redact, and tag actions emit Painless regex scripts. Enable the setting, switch to structural_only mode, or use only full-redact (action: "redact") to continue without regex scripts.';
 
 /**
  * Returns an error message when the processing needs Painless regex but the cluster has it disabled,

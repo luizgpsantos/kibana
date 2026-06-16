@@ -35,11 +35,15 @@ describe('sensitive_data hash compile drift check', () => {
     const emailHash = compileFromCategories([{ id: 'email', action: 'hash' }], {
       field: 'message',
     });
+    const ipv6Hash = compileFromCategories([{ id: 'ipv6', action: 'hash' }], {
+      field: 'message',
+    });
 
     const compiled = {
       visa_hash: visaHash,
       credit_card_hash: creditCardHash,
       email_hash: emailHash,
+      ipv6_hash: ipv6Hash,
     };
 
     if (process.env.REGENERATE_SENSITIVE_DATA_HASH_GOLDEN === '1') {

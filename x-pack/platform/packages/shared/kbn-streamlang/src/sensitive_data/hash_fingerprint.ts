@@ -20,15 +20,22 @@ const FNV_PRIME_PAINLESS = '1099511628211L';
 /**
  * Java-regex with exactly one capturing group for per-candidate hash replacement.
  * Uses {@link confirmCandidateRegex} when available; otherwise structural fallbacks for
- * built-in Grok tokens that lack pattern_definitions (email, ipv4, ipv6).
+ * built-in Grok tokens that lack pattern_definitions (email, ipv4). IPv6 uses regex-free scanning.
  */
 const STRUCTURAL_HASH_REGEX: Readonly<Record<string, string>> = {
+  // Avoid possessive/nested quantifiers here — they exceed Painless's per-scan char budget even on
+  // short slices (see script.painless.regex.limit-factor). Structural redact uses the native grok
+  // processor; hash/partial must use a simpler Java regex for per-candidate Painless scripts.
   email: '([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})',
   ipv4: '((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))',
-  ipv6: '((?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|:(?::[0-9a-fA-F]{1,4}){1,7})',
 };
 
 export const hashCandidateRegex = (detector: Detector): string => {
+  if (detector.id === 'ipv6') {
+    throw new Error(
+      'hash compile: ipv6 uses regex-free Painless scanning (see painless_ipv6_scan.ts)'
+    );
+  }
   try {
     return confirmCandidateRegex(detector);
   } catch {
@@ -52,6 +59,28 @@ export const painlessAssignFingerprint = (fromVar: string, toVar: string): strin
     `long __p = ${FNV_PRIME_PAINLESS};`,
     `for (int __i = 0; __i < ${fromVar}.length(); __i++) {`,
     `  __h ^= (long)${fromVar}.charAt(__i);`,
+    `  __h *= __p;`,
+    `}`,
+    `String __hex = '';`,
+    `for (int __i = 15; __i >= 0; __i--) {`,
+    `  int __n = (int)((__h >>> (__i * 4)) & 15);`,
+    `  __hex += "0123456789abcdef".charAt(__n);`,
+    `}`,
+    `String ${toVar} = '${HASH_FINGERPRINT_PREFIX}' + __hex;`,
+  ].join('\n');
+
+/** FNV-1a over `textVar[startVar..endVar)` without allocating a candidate substring. */
+export const painlessAssignFingerprintFromRange = (
+  textVar: string,
+  startVar: string,
+  endVar: string,
+  toVar: string
+): string =>
+  [
+    `long __h = ${FNV_OFFSET_BASIS_PAINLESS};`,
+    `long __p = ${FNV_PRIME_PAINLESS};`,
+    `for (int __i = ${startVar}; __i < ${endVar}; __i++) {`,
+    `  __h ^= (long)${textVar}.charAt(__i);`,
     `  __h *= __p;`,
     `}`,
     `String __hex = '';`,

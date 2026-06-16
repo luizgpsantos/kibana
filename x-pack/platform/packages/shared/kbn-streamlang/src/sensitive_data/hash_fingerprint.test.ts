@@ -47,7 +47,14 @@ describe('hash_fingerprint', () => {
 
   it('builds hash regex for email via structural fallback', () => {
     const [email] = getDetectorsByIds(['email']);
-    expect(hashCandidateRegex(email)).toContain('@');
+    const regex = hashCandidateRegex(email);
+    expect(regex).toContain('@');
+    expect(regex).not.toContain('++');
+  });
+
+  it('builds hash regex for ipv6 via regex-free scan', () => {
+    const [ipv6] = getDetectorsByIds(['ipv6']);
+    expect(() => hashCandidateRegex(ipv6)).toThrow(/regex-free Painless scanning/);
   });
 
   it('builds hash regex for legacy credit-card via value capture', () => {

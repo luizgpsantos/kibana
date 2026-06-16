@@ -151,7 +151,42 @@ describe('compileFromCategories', () => {
     expect(processors).toHaveLength(1);
     const source = scriptSource(processors[0]);
     expect(source).toContain("cats.add('visa')");
-    expect(source).toContain('.matcher(f)');
+    expect(source).toContain('__slice');
+    expect(source).not.toMatch(/^\s*\{ def tm/m);
+  });
+
+  it('emits tag-only flag script with keyword guard without map-literal braces', () => {
+    const { processors } = compileFromCategories(
+      [{ ...visaRedact, action: 'tag', useRecommendedKeywords: true }],
+      { field: 'message', withFlags: true }
+    );
+    const source = scriptSource(processors[0]!);
+    expect(source).toContain('__slice');
+    expect(source).toContain('kwOk');
+    expect(source).not.toContain('{ def tm');
+  });
+
+  it('emits regex-free ipv6 hash script instead of a Painless regex matcher', () => {
+    const { processors } = compileFromCategories([{ id: 'ipv6', action: 'hash' }], {
+      field: 'message',
+      withFlags: true,
+    });
+    const hashProcessor = processors.find((p) => p && 'script' in p && p.script?.description?.includes('Hash'));
+    const source = scriptSource(hashProcessor);
+    expect(source).toContain('for (int i = 0; i < text.length(); i++)');
+    expect(source).toContain('StringBuilder out');
+    expect(source).not.toContain('.matcher(');
+  });
+
+  it('emits chunked email hash script to stay under Painless regex scan limits', () => {
+    const { processors } = compileFromCategories([{ id: 'email', action: 'hash' }], {
+      field: 'message',
+      withFlags: true,
+    });
+    const hashProcessor = processors.find((p) => p && 'script' in p && p.script?.description?.includes('Hash'));
+    const source = scriptSource(hashProcessor);
+    expect(source).toContain('__slice');
+    expect(source).toContain('__off = 0; __off < text.length(); __off += 64');
   });
 
   it('confirmCandidateRegex expands visa value capture and drops \\K', () => {
