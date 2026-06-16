@@ -8,53 +8,67 @@
 import { createDefaultCategoryConfig } from '../../../sensitive_data/catalog';
 import { convertSensitiveDataProcessorToESQL } from './sensitive_data';
 
-const commandSources = (commands: ReturnType<typeof convertSensitiveDataProcessorToESQL>): string =>
-  JSON.stringify(commands);
+const commandSources = (result: ReturnType<typeof convertSensitiveDataProcessorToESQL>): string =>
+  JSON.stringify(result.commands);
 
 describe('convertSensitiveDataProcessorToESQL', () => {
   it('emits structural redact EVAL commands for the selected categories', () => {
-    const commands = convertSensitiveDataProcessorToESQL({
+    const result = convertSensitiveDataProcessorToESQL({
       action: 'sensitive_data',
       from: 'message',
       categories: [{ id: 'email', action: 'redact' }],
     });
-    expect(commands.length).toBeGreaterThanOrEqual(1);
-    expect(commands[0].name).toBe('eval');
+    expect(result.commands.length).toBeGreaterThanOrEqual(1);
+    expect(result.commands[0].name).toBe('eval');
+    expect(result.warnings).toEqual([]);
   });
 
   it('emits redact EVAL commands for an all-redact selection', () => {
-    const commands = convertSensitiveDataProcessorToESQL({
+    const result = convertSensitiveDataProcessorToESQL({
       action: 'sensitive_data',
       from: 'message',
       categories: [{ id: 'email', action: 'redact' }, createDefaultCategoryConfig('visa')],
     });
-    expect(commands.length).toBeGreaterThanOrEqual(2);
-    const serialized = commandSources(commands);
+    expect(result.commands.length).toBeGreaterThanOrEqual(2);
+    const serialized = commandSources(result);
     expect(serialized).toContain('EMAIL');
     expect(serialized).toContain('VISA');
+    expect(result.warnings).toEqual([]);
   });
 
-  it('emits redact EVAL commands for hash categories (preview degradation)', () => {
-    const commands = convertSensitiveDataProcessorToESQL({
+  it('emits redact EVAL commands for hash categories with a hash preview warning', () => {
+    const result = convertSensitiveDataProcessorToESQL({
       action: 'sensitive_data',
       from: 'message',
       categories: [{ id: 'email', action: 'hash' }],
     });
-    expect(commands.length).toBeGreaterThanOrEqual(1);
-    expect(commands[0].name).toBe('eval');
+    expect(result.commands.length).toBeGreaterThanOrEqual(1);
+    expect(result.commands[0].name).toBe('eval');
+    expect(result.warnings.some((w) => w.includes('hash') && w.includes('Email'))).toBe(true);
   });
 
-  it('returns no ES|QL commands for tag-only categories', () => {
-    const commands = convertSensitiveDataProcessorToESQL({
+  it('tag action returns empty clauses with a warning', () => {
+    const result = convertSensitiveDataProcessorToESQL({
       action: 'sensitive_data',
       from: 'message',
       categories: [{ ...createDefaultCategoryConfig('visa'), action: 'tag' }],
     });
-    expect(commands).toEqual([]);
+    expect(result.commands).toEqual([]);
+    expect(result.warnings.some((w) => w.includes('tag-only'))).toBe(true);
   });
 
-  it('omits tag-only categories from a mixed tag and redact selection', () => {
-    const commands = convertSensitiveDataProcessorToESQL({
+  it('partial action returns a clause and a partial preview warning', () => {
+    const result = convertSensitiveDataProcessorToESQL({
+      action: 'sensitive_data',
+      from: 'message',
+      categories: [{ ...createDefaultCategoryConfig('visa'), action: 'partial', keepLast: 4 }],
+    });
+    expect(result.commands.length).toBeGreaterThanOrEqual(1);
+    expect(result.warnings.some((w) => w.includes('partial redact') && w.includes('4'))).toBe(true);
+  });
+
+  it('mixed redact + tag: redact clause emitted, tag warning present', () => {
+    const result = convertSensitiveDataProcessorToESQL({
       action: 'sensitive_data',
       from: 'message',
       categories: [
@@ -62,14 +76,15 @@ describe('convertSensitiveDataProcessorToESQL', () => {
         { id: 'email', action: 'redact' },
       ],
     });
-    expect(commands.length).toBeGreaterThanOrEqual(1);
-    const serialized = commandSources(commands);
+    expect(result.commands.length).toBeGreaterThanOrEqual(1);
+    const serialized = commandSources(result);
     expect(serialized).toContain('EMAIL');
     expect(serialized).not.toContain('VISA');
+    expect(result.warnings.some((w) => w.includes('tag-only'))).toBe(true);
   });
 
   it('returns no ES|QL commands when every category is tag-only or unknown', () => {
-    const commands = convertSensitiveDataProcessorToESQL({
+    const result = convertSensitiveDataProcessorToESQL({
       action: 'sensitive_data',
       from: 'message',
       categories: [
@@ -77,6 +92,7 @@ describe('convertSensitiveDataProcessorToESQL', () => {
         { ...createDefaultCategoryConfig('visa'), action: 'tag' },
       ],
     });
-    expect(commands).toEqual([]);
+    expect(result.commands).toEqual([]);
+    expect(result.warnings.some((w) => w.includes('tag-only'))).toBe(true);
   });
 });

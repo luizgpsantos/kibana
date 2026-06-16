@@ -27,6 +27,7 @@ export interface ESQLTranspilationOptions {
 export interface ESQLTranspilationResult {
   query: string;
   commands: string[];
+  warnings: string[];
 }
 
 export const conditionToESQL = (condition: Condition): string => {
@@ -40,14 +41,15 @@ export const transpile = async (
 ): Promise<ESQLTranspilationResult> => {
   const validatedStreamlang = streamlangDSLSchema.parse(streamlang);
 
-  const esqlCommandsFromStreamlang = pipe(flattenSteps(validatedStreamlang.steps), (steps) =>
+  const { query, warnings } = await pipe(flattenSteps(validatedStreamlang.steps), (steps) =>
     convertStreamlangDSLToESQLCommands(steps, transpilationOptions, resolverOptions)
   );
 
-  const commandsArray = [await esqlCommandsFromStreamlang].filter(Boolean);
+  const commandsArray = query ? [query] : [];
 
   return {
-    query: `  | ${commandsArray.join('\n|')}`,
+    query: commandsArray.length > 0 ? `  | ${commandsArray.join('\n|')}` : '',
     commands: commandsArray,
+    warnings,
   };
 };

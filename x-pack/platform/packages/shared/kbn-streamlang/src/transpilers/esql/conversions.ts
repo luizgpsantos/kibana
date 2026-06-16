@@ -71,120 +71,183 @@ import { convertUriPartsProcessorToESQL } from './processors/uri_parts';
 import { convertRegisteredDomainProcessorToESQL } from './processors/registered_domain';
 import { convertSensitiveDataProcessorToESQL } from './processors/sensitive_data';
 
+interface ProcessorToESQLResult {
+  commands: ESQLAstCommand[] | null;
+  warnings: string[];
+}
+
 async function convertProcessorToESQL(
   processor: StreamlangProcessorDefinition,
   resolver?: StreamlangResolver
-): Promise<ESQLAstCommand[] | null> {
+): Promise<ProcessorToESQLResult> {
   switch (processor.action) {
     case 'rename':
-      return convertRenameProcessorToESQL(processor as RenameProcessor);
+      return { commands: convertRenameProcessorToESQL(processor as RenameProcessor), warnings: [] };
 
     case 'set':
-      return convertSetProcessorToESQL(processor as SetProcessor);
+      return { commands: convertSetProcessorToESQL(processor as SetProcessor), warnings: [] };
 
     case 'append':
-      return convertAppendProcessorToESQL(processor as AppendProcessor);
+      return { commands: convertAppendProcessorToESQL(processor as AppendProcessor), warnings: [] };
 
     case 'convert':
-      return convertConvertProcessorToESQL(processor as ConvertProcessor);
+      return {
+        commands: convertConvertProcessorToESQL(processor as ConvertProcessor),
+        warnings: [],
+      };
 
     case 'date':
-      return convertDateProcessorToESQL(processor as DateProcessor);
+      return { commands: convertDateProcessorToESQL(processor as DateProcessor), warnings: [] };
 
     case 'dissect':
-      return convertDissectProcessorToESQL(processor as DissectProcessor);
+      return {
+        commands: convertDissectProcessorToESQL(processor as DissectProcessor),
+        warnings: [],
+      };
 
     case 'grok':
-      return convertGrokProcessorToESQL(processor as GrokProcessor);
+      return { commands: convertGrokProcessorToESQL(processor as GrokProcessor), warnings: [] };
 
     case 'uri_parts':
-      return convertUriPartsProcessorToESQL(processor as UriPartsProcessor);
+      return {
+        commands: convertUriPartsProcessorToESQL(processor as UriPartsProcessor),
+        warnings: [],
+      };
 
     case 'math':
-      return convertMathProcessorToESQL(processor as MathProcessor);
+      return { commands: convertMathProcessorToESQL(processor as MathProcessor), warnings: [] };
 
     case 'remove_by_prefix':
-      return convertRemoveByPrefixProcessorToESQL(processor as RemoveByPrefixProcessor);
+      return {
+        commands: convertRemoveByPrefixProcessorToESQL(processor as RemoveByPrefixProcessor),
+        warnings: [],
+      };
 
     case 'remove':
-      return convertRemoveProcessorToESQL(processor as RemoveProcessor);
+      return { commands: convertRemoveProcessorToESQL(processor as RemoveProcessor), warnings: [] };
 
     case 'drop_document':
-      return convertDropDocumentProcessorToESQL(processor as DropDocumentProcessor);
+      return {
+        commands: convertDropDocumentProcessorToESQL(processor as DropDocumentProcessor),
+        warnings: [],
+      };
 
     case 'replace':
-      return convertReplaceProcessorToESQL(processor as ReplaceProcessor);
+      return {
+        commands: convertReplaceProcessorToESQL(processor as ReplaceProcessor),
+        warnings: [],
+      };
 
     case 'redact':
-      return convertRedactProcessorToESQL(processor as RedactProcessor);
+      return { commands: convertRedactProcessorToESQL(processor as RedactProcessor), warnings: [] };
 
-    case 'sensitive_data':
-      return convertSensitiveDataProcessorToESQL(processor as SensitiveDataProcessor);
+    case 'sensitive_data': {
+      const { commands, warnings } = convertSensitiveDataProcessorToESQL(
+        processor as SensitiveDataProcessor
+      );
+      return { commands, warnings };
+    }
 
-    case 'uppercase':
+    case 'uppercase': {
       const convertUppercaseProcessorToESQL = createTransformStringESQL('TO_UPPER');
-      return convertUppercaseProcessorToESQL(processor as UppercaseProcessor);
+      return {
+        commands: convertUppercaseProcessorToESQL(processor as UppercaseProcessor),
+        warnings: [],
+      };
+    }
 
-    case 'lowercase':
+    case 'lowercase': {
       const convertLowercaseProcessorToESQL = createTransformStringESQL('TO_LOWER');
-      return convertLowercaseProcessorToESQL(processor as LowercaseProcessor);
+      return {
+        commands: convertLowercaseProcessorToESQL(processor as LowercaseProcessor),
+        warnings: [],
+      };
+    }
 
-    case 'trim':
+    case 'trim': {
       const convertTrimProcessorToESQL = createTransformStringESQL('TRIM');
-      return convertTrimProcessorToESQL(processor as TrimProcessor);
+      return {
+        commands: convertTrimProcessorToESQL(processor as TrimProcessor),
+        warnings: [],
+      };
+    }
 
     case 'join':
-      return convertJoinProcessorToESQL(processor as JoinProcessor);
+      return { commands: convertJoinProcessorToESQL(processor as JoinProcessor), warnings: [] };
 
     case 'split':
-      return convertSplitProcessorToESQL(processor as SplitProcessor);
+      return { commands: convertSplitProcessorToESQL(processor as SplitProcessor), warnings: [] };
 
     case 'sort':
-      return convertSortProcessorToESQL(processor as SortProcessor);
+      return { commands: convertSortProcessorToESQL(processor as SortProcessor), warnings: [] };
 
     case 'concat':
-      return convertConcatProcessorToESQL(processor as ConcatProcessor);
+      return { commands: convertConcatProcessorToESQL(processor as ConcatProcessor), warnings: [] };
 
     case 'network_direction':
-      return convertNetworkDirectionProcessorToESQL(processor as NetworkDirectionProcessor);
+      return {
+        commands: convertNetworkDirectionProcessorToESQL(processor as NetworkDirectionProcessor),
+        warnings: [],
+      };
 
     case 'json_extract':
-      return convertJsonExtractProcessorToESQL(processor as JsonExtractProcessor);
+      return {
+        commands: convertJsonExtractProcessorToESQL(processor as JsonExtractProcessor),
+        warnings: [],
+      };
 
     case 'enrich':
       if (!resolver) {
         throw new Error('Enrich policy resolver is required for enrich processor.');
       }
-      return await convertEnrichProcessorToESQL(processor as EnrichProcessor, resolver);
+      return {
+        commands: await convertEnrichProcessorToESQL(processor as EnrichProcessor, resolver),
+        warnings: [],
+      };
+
     case 'user_agent':
-      return convertUserAgentProcessorToESQL(processor as UserAgentProcessor);
+      return {
+        commands: convertUserAgentProcessorToESQL(processor as UserAgentProcessor),
+        warnings: [],
+      };
 
     case 'registered_domain':
-      return convertRegisteredDomainProcessorToESQL(processor as RegisteredDomainProcessor);
+      return {
+        commands: convertRegisteredDomainProcessorToESQL(processor as RegisteredDomainProcessor),
+        warnings: [],
+      };
 
     case 'manual_ingest_pipeline':
-      return [
-        Builder.command({
-          name: 'eval',
-          args: [
-            Builder.expression.literal.string(
-              'WARNING: Manual ingest pipeline not supported in ES|QL'
-            ),
-          ],
-        }),
-      ];
+      return {
+        commands: [
+          Builder.command({
+            name: 'eval',
+            args: [
+              Builder.expression.literal.string(
+                'WARNING: Manual ingest pipeline not supported in ES|QL'
+              ),
+            ],
+          }),
+        ],
+        warnings: [],
+      };
 
     default:
-      return null;
+      return { commands: null, warnings: [] };
   }
+}
+
+export interface StreamlangToESQLCommandsResult {
+  query: string;
+  warnings: string[];
 }
 
 export async function convertStreamlangDSLToESQLCommands(
   actionSteps: StreamlangProcessorDefinition[],
   transpilationOptions: ESQLTranspilationOptions,
   resolverOptions?: StreamlangResolverOptions
-): Promise<string> {
-  const resolvedEsqlAstCommands = await Promise.all(
+): Promise<StreamlangToESQLCommandsResult> {
+  const resolved = await Promise.all(
     actionSteps.map((processor) =>
       convertProcessorToESQL(
         processor,
@@ -193,13 +256,15 @@ export async function convertStreamlangDSLToESQLCommands(
     )
   );
 
-  const esqlAstCommands = resolvedEsqlAstCommands
-    .filter((cmds): cmds is ESQLAstCommand[] => cmds !== null)
-    .flat();
+  const esqlAstCommands = resolved.flatMap(({ commands }) => (commands === null ? [] : commands));
 
-  const query = Builder.expression.query(esqlAstCommands);
+  const warnings = resolved.flatMap(({ warnings: processorWarnings }) => processorWarnings);
 
-  return BasicPrettyPrinter.multiline(query, { pipeTab: transpilationOptions.pipeTab });
+  const query = BasicPrettyPrinter.multiline(Builder.expression.query(esqlAstCommands), {
+    pipeTab: transpilationOptions.pipeTab,
+  });
+
+  return { query, warnings };
 }
 
 /**

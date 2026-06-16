@@ -17,6 +17,7 @@ Object {
   | EVAL \`attributes.boolean_false_test\` = CASE(COALESCE(\`attributes.is_disabled\` == FALSE, FALSE) AND COALESCE(\`attributes.is_disabled_str\` == \\"false\\", FALSE) AND COALESCE(\`attributes.is_enabled\` != FALSE, TRUE) AND COALESCE(\`attributes.is_enabled_str\` != \\"false\\", TRUE), \\"matched_false_test\\", \`attributes.boolean_false_test\`)
   | EVAL \`attributes.numeric_450_test\` = CASE(COALESCE(\`attributes.status_code\` == 450, FALSE) AND COALESCE(\`attributes.status_code_str\` == \\"450\\", FALSE) AND COALESCE(\`attributes.other_code\` != 450, TRUE) AND COALESCE(\`attributes.other_code_str\` != \\"450\\", TRUE), \\"matched_450_test\\", \`attributes.numeric_450_test\`)
   | EVAL \`attributes.mixed_coercion_test\` = CASE(COALESCE(\`attributes.response_time\` > 100, FALSE) AND COALESCE(\`attributes.response_time_str\` > \\"100\\", FALSE) AND COALESCE(\`attributes.port\` >= \\"8000\\" AND \`attributes.port\` <= \\"9000\\", FALSE) AND COALESCE(\`attributes.is_enabled\` == TRUE, FALSE) AND COALESCE(\`attributes.count_str\` == \\"42\\", FALSE), \\"matched_mixed_coercion\\", \`attributes.mixed_coercion_test\`)",
+  "warnings": Array [],
 }
 `;
 
