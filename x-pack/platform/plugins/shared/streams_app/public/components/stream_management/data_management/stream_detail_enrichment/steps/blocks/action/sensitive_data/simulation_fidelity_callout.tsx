@@ -48,12 +48,17 @@ const previewNoteMessage = (
 
 interface SimulationFidelityCalloutProps {
   categories: SensitiveDataCategory[];
+  /** Draft wired streams evaluate processing in read-time ES|QL views; classic and materialized wired use ingest. */
+  showEsqlPreviewNote?: boolean;
 }
 
-export const SimulationFidelityCallout = ({ categories }: SimulationFidelityCalloutProps) => {
+export const SimulationFidelityCallout = ({
+  categories,
+  showEsqlPreviewNote = false,
+}: SimulationFidelityCalloutProps) => {
   const notes = useMemo(() => collectSensitiveDataEsqlPreviewNotes(categories), [categories]);
 
-  if (notes.length === 0) {
+  if (!showEsqlPreviewNote || notes.length === 0) {
     return null;
   }
 
