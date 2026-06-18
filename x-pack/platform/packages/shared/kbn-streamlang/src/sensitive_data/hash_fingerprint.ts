@@ -23,10 +23,28 @@ const FNV_PRIME_PAINLESS = '1099511628211L';
  * built-in Grok tokens that lack pattern_definitions (email, ipv4). IPv6 uses regex-free scanning.
  */
 const STRUCTURAL_HASH_REGEX: Readonly<Record<string, string>> = {
-  // Avoid possessive/nested quantifiers here — they exceed Painless's per-scan char budget even on
-  // short slices (see script.painless.regex.limit-factor). Structural redact uses the native grok
-  // processor; hash/partial must use a simpler Java regex for per-candidate Painless scripts.
-  email: '([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})',
+  // Structural redact uses the native grok processor; hash/partial must use a simpler Java regex for
+  // per-candidate Painless scripts that stays under `script.painless.regex.limit-factor`. The budget
+  // is `factor (6) × sliceLength`, and the dominant cost is the engine re-reading characters via
+  // `matcher.find()`: `find()` retries the pattern at every start offset, and a greedy `[class]+`
+  // re-scans the whole run at each retry, so a long run of local-part characters costs O(n²) char
+  // visits and blows the budget even on a single 128-char chunk. Two changes keep `email` under
+  // budget (both verified against real ES, including the adversarial matrix input, with identical
+  // matches to the old greedy form on every valid address):
+  //   1. A leading negative lookbehind `(?<![local-part chars])` makes `find()` fail in O(1) at every
+  //      interior offset of a run, so a match can only *start* at a true run boundary — this is the
+  //      same boundary trick the card detectors use with `(?<![0-9])`, and it is what removes the
+  //      O(n²) restart cost on the dense adversarial input.
+  //   2. A possessive local part (`++`) stops backtracking within the one real match attempt.
+  // The domain is left greedy so matching is unchanged — a sentence-ending address (`bob@host.com.`)
+  // still backtracks to the correct span. Lowering the chunk size does not help (the abort count
+  // tracks the budget 1:1).
+  //
+  // Not every detector can be fixed this way — when the *input itself* makes every offset a plausible
+  // match start (digit-dense card runs, IP-dense network logs), the lookbehind can't fail fast and
+  // `find()` restarts keep the ratio at ~6× regardless of quantifiers, so `ipv4`/checksum-card hashing
+  // must fall back to a regex-free scan (see painless_ipv6_scan.ts for the model).
+  email: '((?<![a-zA-Z0-9._%+-])[a-zA-Z0-9._%+-]++@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})',
   ipv4: '((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))',
 };
 

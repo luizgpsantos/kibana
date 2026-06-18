@@ -17,16 +17,18 @@ export const PAINLESS_MATCHER_CHUNK_OVERLAP = 64;
 
 /**
  * Opens a chunked scan loop over `textVar`. Yields global `gs`, `ge`, and `cand` (group 1) per match.
- * Skips overlap duplicates via `lastVar` (int, must exist in outer scope).
+ * Skips overlap duplicates via `lastVar` (int, must exist in outer scope). `lengthVar` bounds where new
+ * matches may *start* (defaults to the full length; pass a capped length for the input-size guardrail).
  */
 export const painlessChunkedMatcherLoopOpen = (
   regex: string,
   textVar: string,
-  lastVar: string
+  lastVar: string,
+  lengthVar: string = `${textVar}.length()`
 ): string[] => {
   const step = PAINLESS_MATCHER_CHUNK_SIZE - PAINLESS_MATCHER_CHUNK_OVERLAP;
   return [
-    `for (int __off = 0; __off < ${textVar}.length(); __off += ${step}) {`,
+    `for (int __off = 0; __off < ${lengthVar}; __off += ${step}) {`,
     `  int __end = __off + ${PAINLESS_MATCHER_CHUNK_SIZE};`,
     `  if (__end > ${textVar}.length()) { __end = ${textVar}.length(); }`,
     `  String __slice = ${textVar}.substring(__off, __end);`,
@@ -42,10 +44,14 @@ export const painlessChunkedMatcherLoopOpen = (
 export const painlessChunkedMatcherLoopClose = (): string[] => [`  }`, `}`];
 
 /** Chunked scan that stops at the first successful match (tag-only telemetry detection). */
-export const painlessChunkedMatcherAnyFindOpen = (regex: string, textVar: string): string[] => {
+export const painlessChunkedMatcherAnyFindOpen = (
+  regex: string,
+  textVar: string,
+  lengthVar: string = `${textVar}.length()`
+): string[] => {
   const step = PAINLESS_MATCHER_CHUNK_SIZE - PAINLESS_MATCHER_CHUNK_OVERLAP;
   return [
-    `for (int __off = 0; __off < ${textVar}.length(); __off += ${step}) {`,
+    `for (int __off = 0; __off < ${lengthVar}; __off += ${step}) {`,
     `  int __end = __off + ${PAINLESS_MATCHER_CHUNK_SIZE};`,
     `  if (__end > ${textVar}.length()) { __end = ${textVar}.length(); }`,
     `  String __slice = ${textVar}.substring(__off, __end);`,

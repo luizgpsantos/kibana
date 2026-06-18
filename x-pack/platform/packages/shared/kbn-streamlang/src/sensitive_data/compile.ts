@@ -19,6 +19,11 @@ import {
   painlessIpv6CandidateScanOpen,
 } from './painless_ipv6_scan';
 import {
+  IPV4_PER_CANDIDATE_SCAN_ID,
+  painlessIpv4CandidateScanClose,
+  painlessIpv4CandidateScanOpen,
+} from './painless_ipv4_scan';
+import {
   detectorForScriptRegex,
   painlessKeywordProximityGuard,
 } from './keyword_proximity_painless';
@@ -28,22 +33,97 @@ import {
   painlessChunkedMatcherLoopClose,
   painlessChunkedMatcherLoopOpen,
 } from './painless_chunked_regex_match';
+import {
+  painlessBoundedWindowAnyFindClose,
+  painlessBoundedWindowAnyFindOpen,
+  painlessBoundedWindowLoopClose,
+  painlessBoundedWindowLoopOpen,
+} from './painless_bounded_window_match';
 import { captureName, maskToken } from './mask';
 
-const perCandidateMatcherLoopOpen = (
-  detectorId: string,
+/**
+ * How a per-candidate transform (`hash`/`partial`/`tag`/checksum-`redact`) iterates matches over the
+ * field. Regex-driven detectors that re-scan characters trip `script.painless.regex.limit-factor`, so
+ * detectors whose value pattern is unsafe under `matcher.find()` use a linear scan or a bounded-window
+ * matcher instead — all four kinds expose the same `gs`/`ge`/`cand` + `last` contract to the body.
+ */
+type CandidateLoopKind = 'chunked' | 'ipv6-scan' | 'ipv4-scan' | 'digit-window';
+
+const candidateLoopKind = (detectorId: string, regex: string): CandidateLoopKind => {
+  if (detectorId === IPV6_PER_CANDIDATE_SCAN_ID) return 'ipv6-scan';
+  if (detectorId === IPV4_PER_CANDIDATE_SCAN_ID) return 'ipv4-scan';
+  // Digit-boundary value patterns (payment cards, US SSN, legacy credit-card) wrap the value as
+  // group 1 and begin with a `(?<![0-9])` boundary. `matcher.find()` over a chunk backtracks on their
+  // `[ .-]?` separators and trips the limit on separator-dense input, so drive them with a
+  // bounded-window matcher that keeps the exact brand regex but bounds the matcher input.
+  if (regex.startsWith('((?<![0-9])')) return 'digit-window';
+  return 'chunked';
+};
+
+/**
+ * Hard cap on how many characters of a field any per-candidate Painless scan will inspect for new
+ * match starts. A single multi-megabyte field would otherwise dominate an ingest node even with a
+ * linear scan; PII is virtually never past 32 KB into one field. Characters beyond the cap are copied
+ * through unchanged (never redacted/hashed) and, when telemetry is on, the document is flagged
+ * `<namespace>.truncated`. This is an absolute-cost guardrail (Spec 03), independent of the
+ * regex-limit fixes — it never substitutes for keeping a detector low-ratio.
+ */
+export const MAX_SCAN_CHARS = 32768;
+
+/** Opens the per-candidate loop, declaring `gs`/`ge` (+ `cand` group 1 for value-matching kinds). */
+const perCandidateLoopOpen = (
+  kind: CandidateLoopKind,
   regex: string,
   textVar: string,
-  lastVar: string
-): string[] =>
-  detectorId === IPV6_PER_CANDIDATE_SCAN_ID
-    ? painlessIpv6CandidateScanOpen(textVar, lastVar)
-    : painlessChunkedMatcherLoopOpen(regex, textVar, lastVar);
+  lastVar: string,
+  lengthVar: string
+): string[] => {
+  switch (kind) {
+    case 'ipv6-scan':
+      return painlessIpv6CandidateScanOpen(textVar, lastVar, lengthVar);
+    case 'ipv4-scan':
+      return painlessIpv4CandidateScanOpen(textVar, lastVar, lengthVar);
+    case 'digit-window':
+      return painlessBoundedWindowLoopOpen(regex, textVar, lastVar, lengthVar);
+    case 'chunked':
+      return painlessChunkedMatcherLoopOpen(regex, textVar, lastVar, lengthVar);
+  }
+};
 
-const perCandidateMatcherLoopClose = (detectorId: string, lastVar: string): string[] =>
-  detectorId === IPV6_PER_CANDIDATE_SCAN_ID
-    ? painlessIpv6CandidateScanClose(lastVar, 'i')
-    : painlessChunkedMatcherLoopClose();
+/**
+ * Declares `int __scanLen` capping new-match scanning at {@link MAX_SCAN_CHARS} characters of `textVar`.
+ * A ternary is used rather than `Math.min` because Painless resolves `Math.min(int, int)` to the
+ * `double` overload, which cannot be assigned back to an `int`.
+ */
+const scanLenDecl = (textVar: string): string =>
+  `int __scanLen = ${textVar}.length() < ${MAX_SCAN_CHARS} ? ${textVar}.length() : ${MAX_SCAN_CHARS};`;
+
+/**
+ * Sets `<flagNamespace>.truncated = true` when `textVar` was longer than the scan cap. Emitted only
+ * with telemetry on; the field's content (including the un-scanned tail) is preserved regardless.
+ */
+const truncationFlagLine = (textVar: string, flagReport?: FlagReportOptions): string[] =>
+  flagReport?.withFlags === true
+    ? [
+        `if (${textVar}.length() > __scanLen) { ${painlessFieldAssignment(
+          `${flagReport.flagNamespace}.truncated`
+        )} = true; }`,
+      ]
+    : [];
+
+/** Closes the per-candidate loop, emitting `last = ge;` (+ index advance for scans) and braces. */
+const perCandidateLoopClose = (kind: CandidateLoopKind, lastVar: string): string[] => {
+  switch (kind) {
+    case 'ipv6-scan':
+      return painlessIpv6CandidateScanClose(lastVar, 'i');
+    case 'ipv4-scan':
+      return painlessIpv4CandidateScanClose(lastVar, 'i');
+    case 'digit-window':
+      return painlessBoundedWindowLoopClose(lastVar, 'i');
+    case 'chunked':
+      return [`    ${lastVar} = ge;`, ...painlessChunkedMatcherLoopClose()];
+  }
+};
 
 export { confirmCandidateRegex } from './confirm_candidate_regex';
 
@@ -272,10 +352,14 @@ const flagScriptFromEntries = (
   field: string,
   flagNamespace: string
 ): IngestProcessorContainer => {
+  // Tag entries run a per-candidate Painless scan over the field, so they get the same scan cap as
+  // hash/partial; structural-redact entries below only do a literal `indexOf` and are not capped.
+  const hasTagScan = entries.some((e) => e.config.action === 'tag');
   const lines = [
     `def value = ${painlessFieldAccessor(field)};`,
     `if (!(value instanceof String)) { return; }`,
     `String f = (String) value;`,
+    ...(hasTagScan ? [scanLenDecl('f')] : []),
     ...flagCategoriesInitLines(flagNamespace),
   ];
   for (const entry of entries) {
@@ -286,21 +370,28 @@ const flagScriptFromEntries = (
     if (config.action === 'tag') {
       const scriptDetector = detectorForScriptRegex(detector, config);
       const regex = confirmCandidateRegex(scriptDetector);
+      const kind = candidateLoopKind(detector.id, regex);
+      const anyFindOpen =
+        kind === 'digit-window'
+          ? painlessBoundedWindowAnyFindOpen
+          : painlessChunkedMatcherAnyFindOpen;
+      const anyFindClose =
+        kind === 'digit-window'
+          ? painlessBoundedWindowAnyFindClose
+          : painlessChunkedMatcherAnyFindClose;
       const keywordGuard = painlessKeywordProximityGuard(config, 'f', 'gs');
       if (keywordGuard) {
         lines.push(
-          ...painlessChunkedMatcherAnyFindOpen(regex, 'f'),
+          ...anyFindOpen(regex, 'f', '__scanLen'),
           ...keywordGuard.split('\n').map((line) => `    ${line}`),
-          ...painlessChunkedMatcherAnyFindClose(
+          ...anyFindClose(
             `if (kwOk && !cats.contains('${detector.id}')) { cats.add('${detector.id}'); }`
           )
         );
       } else {
         lines.push(
-          ...painlessChunkedMatcherAnyFindOpen(regex, 'f'),
-          ...painlessChunkedMatcherAnyFindClose(
-            `if (!cats.contains('${detector.id}')) { cats.add('${detector.id}'); }`
-          )
+          ...anyFindOpen(regex, 'f', '__scanLen'),
+          ...anyFindClose(`if (!cats.contains('${detector.id}')) { cats.add('${detector.id}'); }`)
         );
       }
       continue;
@@ -319,6 +410,13 @@ const flagScriptFromEntries = (
     `  ${painlessFieldAssignment(`${flagNamespace}.categories`)} = cats;`,
     `}`
   );
+  if (hasTagScan) {
+    lines.push(
+      `if (f.length() > __scanLen) { ${painlessFieldAssignment(
+        `${flagNamespace}.truncated`
+      )} = true; }`
+    );
+  }
   return {
     script: {
       lang: 'painless',
@@ -350,18 +448,18 @@ const checksumBody = (type: string): string => {
     // Length is enforced by the candidate regex; reject uniform-digit candidates (Luhn-trivial).
     return [
       'int sum = 0; boolean alt = false; int cnt = 0; int first = -1; boolean multi = false;',
-      "for (int i = cand.length() - 1; i >= 0; i--) { char c = cand.charAt(i); if (c < (char)'0' || c > (char)'9') { continue; } int raw = c - (char)'0'; if (first < 0) { first = raw; } else if (raw != first) { multi = true; } int d = raw; cnt++; if (alt) { d *= 2; if (d > 9) { d -= 9; } } sum += d; alt = !alt; }",
+      "for (int __ci = cand.length() - 1; __ci >= 0; __ci--) { char c = cand.charAt(__ci); if (c < (char)'0' || c > (char)'9') { continue; } int raw = c - (char)'0'; if (first < 0) { first = raw; } else if (raw != first) { multi = true; } int d = raw; cnt++; if (alt) { d *= 2; if (d > 9) { d -= 9; } } sum += d; alt = !alt; }",
       'boolean ok = (cnt > 0 && multi && sum % 10 == 0);',
     ].join(' ');
   }
   if (type === 'mod97') {
     return [
       "String s = '';",
-      "for (int i = 0; i < cand.length(); i++) { char c = cand.charAt(i); if (c == (char)' ') { continue; } if (c >= (char)'a' && c <= (char)'z') { c = (char)(c - 32); } s += c; }",
+      "for (int __ci = 0; __ci < cand.length(); __ci++) { char c = cand.charAt(__ci); if (c == (char)' ') { continue; } if (c >= (char)'a' && c <= (char)'z') { c = (char)(c - 32); } s += c; }",
       'boolean ok;',
       'if (s.length() < 15 || s.length() > 34) { ok = false; } else {',
       'String rearr = s.substring(4) + s.substring(0, 4); long rem = 0; boolean good = true;',
-      "for (int i = 0; i < rearr.length(); i++) { char c = rearr.charAt(i); int val; if (c >= (char)'0' && c <= (char)'9') { val = c - (char)'0'; rem = (rem * 10 + val) % 97; } else if (c >= (char)'A' && c <= (char)'Z') { val = c - (char)'A' + 10; rem = (rem * 100 + val) % 97; } else { good = false; break; } }",
+      "for (int __ci = 0; __ci < rearr.length(); __ci++) { char c = rearr.charAt(__ci); int val; if (c >= (char)'0' && c <= (char)'9') { val = c - (char)'0'; rem = (rem * 10 + val) % 97; } else if (c >= (char)'A' && c <= (char)'Z') { val = c - (char)'A' + 10; rem = (rem * 100 + val) % 97; } else { good = false; break; } }",
       'ok = good && (rem == 1); }',
     ].join(' ');
   }
@@ -387,6 +485,7 @@ export const confirmScript = (
   // partialRedactScript applies the same escape via maskPrefix; keep these two in sync.
   const escapedToken = painlessSingleQuoted(token);
   const regex = confirmCandidateRegex(detector);
+  const kind = candidateLoopKind(detector.id, regex);
   const type = detector.detection.validation.type;
   const reportOnAny =
     flagReport?.withFlags === true
@@ -401,15 +500,16 @@ export const confirmScript = (
     `if (!(value instanceof String)) { return; }`,
     `String text = (String) value;`,
     `String out = ''; int last = 0; boolean any = false;`,
-    ...painlessChunkedMatcherLoopOpen(regex, 'text', 'last'),
+    scanLenDecl('text'),
+    ...perCandidateLoopOpen(kind, regex, 'text', 'last', '__scanLen'),
     `    ${checksumBody(type)}`,
     `    out += text.substring(last, gs);`,
     `    if (ok) { out += '${escapedToken}'; any = true; } else { out += text.substring(gs, ge); }`,
-    `    last = ge;`,
-    ...painlessChunkedMatcherLoopClose(),
+    ...perCandidateLoopClose(kind, 'last'),
     `if (any) {`,
     ...reportOnAny,
     `}`,
+    ...truncationFlagLine('text', flagReport),
   ].join('\n');
   return {
     script: {
@@ -427,6 +527,7 @@ const partialRedactScript = (
 ): IngestProcessorContainer => {
   const scriptDetector = detectorForScriptRegex(entry.detector, entry.config);
   const regex = confirmCandidateRegex(scriptDetector);
+  const kind = candidateLoopKind(entry.detector.id, regex);
   const keywordGuard =
     painlessKeywordProximityGuard(entry.config, 'text', 'gs') ?? 'boolean kwOk = true;';
   const keepLast = entry.config.keepLast ?? 4;
@@ -447,18 +548,19 @@ const partialRedactScript = (
     `if (!(value instanceof String)) { return; }`,
     `String text = (String) value;`,
     `String out = ''; int last = 0; boolean any = false;`,
-    ...painlessChunkedMatcherLoopOpen(regex, 'text', 'last'),
+    scanLenDecl('text'),
+    ...perCandidateLoopOpen(kind, regex, 'text', 'last', '__scanLen'),
     `    ${checksumPart}`,
     `    ${keywordGuard.split('\n').join('\n    ')}`,
     `    out += text.substring(last, gs);`,
     `    String repl;`,
     `    if (cand.length() <= ${keepLast}) { repl = cand; } else { repl = '${maskPrefix}' + cand.substring(cand.length() - ${keepLast}); }`,
     `    if (ok && kwOk) { out += repl; any = true; } else { out += text.substring(gs, ge); }`,
-    `    last = ge;`,
-    ...painlessChunkedMatcherLoopClose(),
+    ...perCandidateLoopClose(kind, 'last'),
     `if (any) {`,
     ...reportOnAny,
     `}`,
+    ...truncationFlagLine('text', flagReport),
   ].join('\n');
   return {
     script: {
@@ -476,9 +578,11 @@ const hashScript = (
 ): IngestProcessorContainer => {
   const scriptDetector = detectorForScriptRegex(entry.detector, entry.config);
   const regex =
-    entry.detector.id === IPV6_PER_CANDIDATE_SCAN_ID
+    entry.detector.id === IPV6_PER_CANDIDATE_SCAN_ID ||
+    entry.detector.id === IPV4_PER_CANDIDATE_SCAN_ID
       ? ''
       : hashCandidateRegex(scriptDetector);
+  const kind = candidateLoopKind(entry.detector.id, regex);
   const keywordGuard =
     painlessKeywordProximityGuard(entry.config, 'text', 'gs') ?? 'boolean kwOk = true;';
   const checksumPart = isChecksum(entry.detector)
@@ -501,18 +605,20 @@ const hashScript = (
     `String text = (String) value;`,
     `StringBuilder out = new StringBuilder();`,
     `int last = 0; boolean any = false;`,
-    ...perCandidateMatcherLoopOpen(entry.detector.id, regex, 'text', 'last'),
+    scanLenDecl('text'),
+    ...perCandidateLoopOpen(kind, regex, 'text', 'last', '__scanLen'),
     `    ${checksumPart}`,
     `    ${keywordGuard.split('\n').join('\n    ')}`,
     `    out.append(text, last, gs);`,
-    `    ${painlessAssignFingerprintFromRange('text', 'gs', 'ge', 'repl').split('\n').join('\n    ')}`,
+    `    ${painlessAssignFingerprintFromRange('text', 'gs', 'ge', 'repl')
+      .split('\n')
+      .join('\n    ')}`,
     `    if (ok && kwOk) { out.append(repl); any = true; } else { out.append(text, gs, ge); }`,
-    ...(entry.detector.id === IPV6_PER_CANDIDATE_SCAN_ID
-      ? perCandidateMatcherLoopClose(entry.detector.id, 'last')
-      : [`    last = ge;`, ...painlessChunkedMatcherLoopClose()]),
+    ...perCandidateLoopClose(kind, 'last'),
     `if (any) {`,
     ...reportOnAny,
     `}`,
+    ...truncationFlagLine('text', flagReport),
   ].join('\n');
   return {
     script: {

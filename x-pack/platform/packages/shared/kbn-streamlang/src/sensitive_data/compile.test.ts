@@ -143,7 +143,7 @@ describe('compileFromCategories', () => {
     expect(source).not.toContain('sum % 10 == 0');
   });
 
-  it('emits tag-only flag script with regex detection for visa', () => {
+  it('emits tag-only flag script with bounded-window detection for visa', () => {
     const { processors } = compileFromCategories([{ ...visaRedact, action: 'tag' }], {
       field: 'message',
       withFlags: true,
@@ -151,7 +151,10 @@ describe('compileFromCategories', () => {
     expect(processors).toHaveLength(1);
     const source = scriptSource(processors[0]);
     expect(source).toContain("cats.add('visa')");
-    expect(source).toContain('__slice');
+    // Digit-boundary cards use the bounded-window matcher (lookingAt on a short window), not the
+    // chunked `find()` matcher — that is what keeps them under the Painless regex limit.
+    expect(source).toContain('lookingAt');
+    expect(source).not.toContain('__slice');
     expect(source).not.toMatch(/^\s*\{ def tm/m);
   });
 
@@ -161,7 +164,7 @@ describe('compileFromCategories', () => {
       { field: 'message', withFlags: true }
     );
     const source = scriptSource(processors[0]!);
-    expect(source).toContain('__slice');
+    expect(source).toContain('lookingAt');
     expect(source).toContain('kwOk');
     expect(source).not.toContain('{ def tm');
   });
@@ -171,9 +174,13 @@ describe('compileFromCategories', () => {
       field: 'message',
       withFlags: true,
     });
-    const hashProcessor = processors.find((p) => p && 'script' in p && p.script?.description?.includes('Hash'));
+    const hashProcessor = processors.find(
+      (p) => p && 'script' in p && p.script?.description?.includes('Hash')
+    );
     const source = scriptSource(hashProcessor);
-    expect(source).toContain('for (int i = 0; i < text.length(); i++)');
+    // Scans new-match starts up to the input-size cap (Spec 03), not the raw field length.
+    expect(source).toContain('for (int i = 0; i < __scanLen; i++)');
+    expect(source).toContain('int __scanLen = text.length() < 32768 ? text.length() : 32768');
     expect(source).toContain('StringBuilder out');
     expect(source).not.toContain('.matcher(');
   });
@@ -183,10 +190,40 @@ describe('compileFromCategories', () => {
       field: 'message',
       withFlags: true,
     });
-    const hashProcessor = processors.find((p) => p && 'script' in p && p.script?.description?.includes('Hash'));
+    const hashProcessor = processors.find(
+      (p) => p && 'script' in p && p.script?.description?.includes('Hash')
+    );
     const source = scriptSource(hashProcessor);
     expect(source).toContain('__slice');
-    expect(source).toContain('__off = 0; __off < text.length(); __off += 64');
+    expect(source).toContain('__off = 0; __off < __scanLen; __off += 64');
+  });
+
+  it('caps per-candidate scanning at MAX_SCAN_CHARS and flags truncation when telemetry is on', () => {
+    const { processors } = compileFromCategories([{ id: 'email', action: 'hash' }], {
+      field: 'message',
+      withFlags: true,
+    });
+    const source = scriptSource(
+      processors.find((p) => p && 'script' in p && p.script?.description?.includes('Hash'))
+    );
+    expect(source).toContain('int __scanLen = text.length() < 32768 ? text.length() : 32768');
+    // The un-scanned tail is still copied through unchanged by the existing final append.
+    expect(source).toContain('out.append(text, last, text.length())');
+    expect(source).toContain(
+      "if (text.length() > __scanLen) { ctx['sensitive_data.truncated'] = true; }"
+    );
+  });
+
+  it('does not emit a truncation flag when telemetry is off', () => {
+    const { processors } = compileFromCategories([{ id: 'email', action: 'hash' }], {
+      field: 'message',
+      withFlags: false,
+    });
+    const source = scriptSource(
+      processors.find((p) => p && 'script' in p && p.script?.description?.includes('Hash'))
+    );
+    expect(source).toContain('int __scanLen = text.length() < 32768 ? text.length() : 32768');
+    expect(source).not.toContain('.truncated');
   });
 
   it('confirmCandidateRegex expands visa value capture and drops \\K', () => {

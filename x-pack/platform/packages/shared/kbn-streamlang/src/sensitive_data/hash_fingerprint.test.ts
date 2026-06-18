@@ -49,7 +49,10 @@ describe('hash_fingerprint', () => {
     const [email] = getDetectorsByIds(['email']);
     const regex = hashCandidateRegex(email);
     expect(regex).toContain('@');
-    expect(regex).not.toContain('++');
+    // Possessive quantifiers stop `find()` from re-reading the local-part/domain runs at every start
+    // offset, which is what kept the greedy form over the Painless regex.limit-factor budget. Verified
+    // against real ES that the possessive form stays under budget where the greedy form aborted.
+    expect(regex).toContain('++');
   });
 
   it('builds hash regex for ipv6 via regex-free scan', () => {

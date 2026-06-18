@@ -15,8 +15,12 @@ const isHexChar = (charVar: string): string =>
  * Opens a linear scan over `textVar` that yields `gs`, `ge`, and `cand` for each IPv6-like token.
  * Skips overlap duplicates via `lastVar` (int, must exist in outer scope).
  */
-export const painlessIpv6CandidateScanOpen = (textVar: string, lastVar: string): string[] => [
-  `for (int i = 0; i < ${textVar}.length(); i++) {`,
+export const painlessIpv6CandidateScanOpen = (
+  textVar: string,
+  lastVar: string,
+  lengthVar: string = `${textVar}.length()`
+): string[] => [
+  `for (int i = 0; i < ${lengthVar}; i++) {`,
   `  char c0 = ${textVar}.charAt(i);`,
   `  if (!(${isHexChar('c0')} || c0 == (char)':')) { continue; }`,
   `  int j = i;`,
@@ -42,7 +46,9 @@ export const painlessIpv6CandidateScanOpen = (textVar: string, lastVar: string):
   `  boolean onlyTwoHexGroups = true;`,
   `  int p = i;`,
   `  while (p < j) {`,
-  `    if (p + 2 > j || !${isHexChar(`${textVar}.charAt(p)`)} || !${isHexChar(`${textVar}.charAt(p + 1)`)} ) { onlyTwoHexGroups = false; break; }`,
+  `    if (p + 2 > j || !${isHexChar(`${textVar}.charAt(p)`)} || !${isHexChar(
+    `${textVar}.charAt(p + 1)`
+  )} ) { onlyTwoHexGroups = false; break; }`,
   `    if (p + 2 == j) { break; }`,
   `    if (${textVar}.charAt(p + 2) != (char)':') { onlyTwoHexGroups = false; break; }`,
   `    p += 3;`,
