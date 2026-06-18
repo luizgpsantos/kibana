@@ -10,6 +10,7 @@ import type { ESQLAstCommand } from '@elastic/esql/types';
 import {
   type Condition,
   conditionToESQLAst,
+  flattenSteps,
   transpileEsql,
   isAlwaysCondition,
 } from '@kbn/streamlang';
@@ -17,6 +18,10 @@ import type { FieldDefinitionType } from '../fields';
 import type { WiredStream } from '../models/ingest/wired';
 import { getEsqlViewName } from '../models/query/view_name';
 import { getParentId } from '../shared/hierarchy';
+import { isOtelStream } from './is_otel_stream';
+
+const DEFAULT_SENSITIVE_DATA_FLAG_NAMESPACE = 'sensitive_data';
+const OTEL_SENSITIVE_DATA_FLAG_NAMESPACE = 'attributes.sensitive_data';
 
 export interface DefinitionToESQLQueryOptions {
   definition: WiredStream.Definition;
@@ -88,7 +93,10 @@ export async function definitionToESQLQuery(
     preProcessingCommands.push(inheritedCastCmd);
   }
 
-  const ownFieldCastCmd = buildFieldTypeCasts(definition);
+  const ownFieldCastCmd = buildFieldTypeCasts(
+    definition,
+    getSensitiveDataTelemetryFieldPathExclusions(definition)
+  );
 
   // We don't want to include these casts when processing isn't added as the casts will produce null values
   // if no value exists, if those values are then fed into something like a simulation results can be misleading
@@ -171,10 +179,38 @@ function buildCastAssignments(
  *
  * Fields with `type: 'system'` or no type are skipped.
  */
-function buildFieldTypeCasts(definition: WiredStream.Definition): ESQLAstCommand | null {
+/**
+ * Telemetry fields written by `sensitive_data` at ingest time are declared in the stream
+ * schema for mappings, but they do not exist in the parent ES|QL view and are not produced
+ * by read-time ES|QL processing — casting them breaks draft stream views.
+ */
+function getSensitiveDataTelemetryFieldPathExclusions(
+  definition: WiredStream.Definition
+): ReadonlySet<string> {
+  const hasTelemetry = flattenSteps(definition.ingest.processing.steps).some(
+    (step) => step.action === 'sensitive_data' && (step.categories?.length ?? 0) > 0
+  );
+  if (!hasTelemetry) {
+    return new Set();
+  }
+
+  const namespace = isOtelStream(definition)
+    ? OTEL_SENSITIVE_DATA_FLAG_NAMESPACE
+    : DEFAULT_SENSITIVE_DATA_FLAG_NAMESPACE;
+
+  return new Set([`${namespace}.detected`, `${namespace}.categories`]);
+}
+
+function buildFieldTypeCasts(
+  definition: WiredStream.Definition,
+  excludeFieldPaths: ReadonlySet<string> = new Set()
+): ESQLAstCommand | null {
   const assignments = buildCastAssignments(
     Object.entries(definition.ingest.wired.fields)
-      .filter(([, field]) => field.type && field.type !== 'system')
+      .filter(
+        ([name, field]) =>
+          field.type && field.type !== 'system' && !excludeFieldPaths.has(name)
+      )
       .map(([name, field]) => ({ name, type: field.type as FieldDefinitionType }))
   );
 

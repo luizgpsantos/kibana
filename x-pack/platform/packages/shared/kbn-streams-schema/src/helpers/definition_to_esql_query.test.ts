@@ -171,6 +171,29 @@ describe('definitionToESQLQuery', () => {
       const castCount = (result.match(/TO_BOOLEAN/g) || []).length;
       expect(castCount).toBe(1);
     });
+
+    it('does not cast sensitive_data telemetry fields that only exist after ingest', async () => {
+      const result = await definitionToESQLQuery({
+        definition: createDraftDefinition({
+          steps: [
+            {
+              action: 'sensitive_data',
+              from: 'body.text',
+              categories: [{ id: 'email', action: 'redact' }],
+            },
+          ],
+          fields: {
+            'attributes.sensitive_data.detected': { type: 'boolean' },
+            'attributes.sensitive_data.categories': { type: 'keyword' },
+          },
+        }),
+        routingCondition: eqCondition,
+      });
+
+      expect(result).not.toContain('attributes.sensitive_data.detected');
+      expect(result).not.toContain('attributes.sensitive_data.categories');
+      expect(result).toContain('body.text');
+    });
   });
 
   describe('includeProcessing: false', () => {
